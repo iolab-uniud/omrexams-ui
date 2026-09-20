@@ -14,15 +14,17 @@ export const dashboardAPI = {
     const response = await apiClient.get('/api/dashboard/status');
     return response.data;
   },
-  previewExcel: async (filename, headerRows = 1, indexCols = 0, centerHeaders = false) => {
-    const response = await apiClient.get(`/api/dashboard/preview_excel?filename=${filename}&headerRows=${headerRows}&indexCols=${indexCols}&centerHeaders=${centerHeaders}`);
+  previewExcel: async (filename, folder, headerRows = 1, indexCols = 0, centerHeaders = false) => {
+    let url = `/api/dashboard/preview_excel?filename=${filename}&headerRows=${headerRows}&indexCols=${indexCols}&centerHeaders=${centerHeaders}`;
+    if (folder) url += `&folder=${encodeURIComponent(folder)}`;
+    const response = await apiClient.get(url);
     return response.data;
   }
 };
 
 export const generateAPI = {
-  getConfig: async (file = "config.yaml") => {
-    const response = await apiClient.get(`/api/generate/config?file=${file}`);
+  getConfig: async (folder) => {
+    const response = await apiClient.get(`/api/generate/config?folder=${folder}`);
     return response.data;
   },
   getFiles: async () => {
@@ -67,14 +69,18 @@ export const generateAPI = {
   }
 };
 export const sortAPI = {
-  getStatus: async () => {
-    const response = await apiClient.get('/api/sort/status');
+  getStatus: async (folder) => {
+    let url = '/api/sort/status';
+    if (folder) url += `?folder=${encodeURIComponent(folder)}`;
+    const response = await apiClient.get(url);
     return response.data;
   },
-  uploadScan: async (file) => {
+  uploadScan: async (file, folder) => {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await apiClient.post('/api/sort/upload', formData, {
+    let url = '/api/sort/upload';
+    if (folder) url += `?folder=${encodeURIComponent(folder)}`;
+    const response = await apiClient.post(url, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
     return response.data;
@@ -85,8 +91,10 @@ export const sortAPI = {
   }
 };
 export const correctAPI = {
-  getStatus: async () => {
-    const response = await apiClient.get('/api/correct/status');
+  getStatus: async (folder) => {
+    let url = '/api/correct/status';
+    if (folder) url += `?folder=${encodeURIComponent(folder)}`;
+    const response = await apiClient.get(url);
     return response.data;
   },
   startCorrection: async (requestData) => {
@@ -96,24 +104,28 @@ export const correctAPI = {
 };
 
 export const manualAPI = {
-  getScans: async () => {
-    const response = await apiClient.get('/api/manual/scans');
+  getScans: async (working_dir) => {
+    let url = '/api/manual/scans';
+    if (working_dir) url += `?working_dir=${encodeURIComponent(working_dir)}`;
+    const response = await apiClient.get(url);
     return response.data;
   },
-  getCorrected: async () => {
-    const response = await apiClient.get('/api/manual/corrected');
+  getCorrected: async (working_dir) => {
+    let url = '/api/manual/corrected';
+    if (working_dir) url += `?working_dir=${encodeURIComponent(working_dir)}`;
+    const response = await apiClient.get(url);
     return response.data;
   },
-  getCorrectedMapping: async (pdfName) => {
-    const response = await apiClient.get(`/api/manual/corrected_mapping?pdf_name=${pdfName}`);
+  getCorrectedMapping: async (working_dir, pdfName) => {
+    const response = await apiClient.get(`/api/manual/corrected_mapping?working_dir=${encodeURIComponent(working_dir)}&pdf_name=${encodeURIComponent(pdfName)}`);
     return response.data;
   },
-  getMissing: async (datafile) => {
-    const response = await apiClient.get(`/api/manual/missing?datafile=${datafile}`);
+  getMissing: async (working_dir) => {
+    const response = await apiClient.get(`/api/manual/missing?working_dir=${encodeURIComponent(working_dir)}`);
     return response.data;
   },
-  getStudentData: async (datafile, studentId) => {
-    const response = await apiClient.get(`/api/manual/student_data?datafile=${datafile}&student_id=${studentId}`);
+  getStudentData: async (working_dir, studentId) => {
+    const response = await apiClient.get(`/api/manual/student_data?working_dir=${encodeURIComponent(working_dir)}&student_id=${studentId}`);
     return response.data;
   },
   forceAnswer: async (requestData) => {
@@ -127,8 +139,8 @@ export const manualAPI = {
 };
 
 export const markAPI = {
-  getQuestionsList: async (datafile) => {
-    const response = await apiClient.get(`/api/mark/questions_list?datafile=${datafile}`);
+  getQuestionsList: async (working_dir) => {
+    const response = await apiClient.get(`/api/mark/questions_list?working_dir=${encodeURIComponent(working_dir)}`);
     return response.data;
   },
   calculateMark: async (requestData) => {
@@ -139,16 +151,16 @@ export const markAPI = {
     const response = await apiClient.post('/api/mark/report', requestData);
     return response.data;
   },
-  reviewQuestion: async (datafile, questionFile, questionIndex, exportFormat, outputFilename) => {
-    let url = `/api/mark/review_question?datafile=${datafile}&question_file=${questionFile}&question=${questionIndex}`;
+  reviewQuestion: async (working_dir, questionFile, questionIndex, exportFormat, outputFilename) => {
+    let url = `/api/mark/review_question?working_dir=${encodeURIComponent(working_dir)}&question_file=${questionFile}&question=${questionIndex}`;
     if (exportFormat && outputFilename) {
       url += `&export_format=${exportFormat}&output_filename=${outputFilename}`;
     }
     const response = await apiClient.get(url);
     return response.data;
   },
-  studentsWithQuestion: async (datafile, questionFile, questionIndex, exportFormat, outputFilename) => {
-    let url = `/api/mark/students_with_question?datafile=${datafile}&question_file=${questionFile}&question=${questionIndex}`;
+  studentsWithQuestion: async (working_dir, questionFile, questionIndex, exportFormat, outputFilename) => {
+    let url = `/api/mark/students_with_question?working_dir=${encodeURIComponent(working_dir)}&question_file=${questionFile}&question=${questionIndex}`;
     if (exportFormat && outputFilename) {
       url += `&export_format=${exportFormat}&output_filename=${outputFilename}`;
     }

@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Trash2, CheckSquare, Square, RefreshCcw } from 'lucide-react';
-import apiClient from '../api/client';
+import apiClient, { generateAPI } from '../api/client';
 import { useConfirm } from '../hooks/useConfirm';
 import BackButton from '../components/BackButton';
 import HomeButton from '../components/HomeButton';
 
 export default function Cleanup() {
   const [data, setData] = useState(null);
+  const [workingDirs, setWorkingDirs] = useState([]);
+  const [selectedWorkingDir, setSelectedWorkingDir] = useState('');
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState('all');
   const [selectedFiles, setSelectedFiles] = useState(new Set());
@@ -28,10 +30,31 @@ export default function Cleanup() {
     { id: 'questions', label: 'File Markdown delle domande' }
   ];
 
-  const fetchData = async () => {
+  const loadDirs = async () => {
     try {
       setLoading(true);
-      const res = await apiClient.get('/api/cleanup/files');
+      const status = await generateAPI.getFiles();
+      const files = status.working_dirs || [];
+      setWorkingDirs(files);
+      if (files.length > 0) {
+        setSelectedWorkingDir(files[0]);
+      } else {
+        setLoading(false);
+      }
+    } catch (e) {
+      console.error(e);
+      setLoading(false);
+    }
+  };
+
+  const fetchData = async (workingDir) => {
+    try {
+      setLoading(true);
+      let url = '/api/cleanup/files';
+      if (workingDir) {
+        url += `?working_dir=${encodeURIComponent(workingDir)}`;
+      }
+      const res = await apiClient.get(url);
       setData(res.data);
       setSelectedFiles(new Set());
     } catch (err) {
@@ -43,8 +66,14 @@ export default function Cleanup() {
   };
 
   useEffect(() => {
-    fetchData();
+    loadDirs();
   }, []);
+
+  useEffect(() => {
+    if (selectedWorkingDir) {
+      fetchData(selectedWorkingDir);
+    }
+  }, [selectedWorkingDir]);
 
   const getFilesToShow = () => {
     if (!data) return [];
@@ -92,7 +121,7 @@ export default function Cleanup() {
       const payload = { files: Array.from(selectedFiles) };
       const res = await apiClient.delete('/api/cleanup/files', { data: payload });
       setMessage({ type: 'success', text: `Eliminati ${res.data.deleted.length} file con successo.` });
-      fetchData(); // Reload the list
+      fetchData(selectedWorkingDir); // Reload the list
     } catch (err) {
       console.error(err);
       setMessage({ type: 'error', text: 'Errore durante l\'eliminazione dei file.' });
@@ -121,6 +150,25 @@ export default function Cleanup() {
       {message && (
         <div className={`p-4 rounded-md mb-6 ${message.type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
           {message.text}
+        </div>
+      )}
+
+      {workingDirs.length > 0 ? (
+        <div className="mb-6 bg-white p-4 rounded-xl border shadow-sm">
+          <label className="block text-sm font-bold text-gray-700 mb-2">Seleziona Cartella di lavoro:</label>
+          <select
+            value={selectedWorkingDir}
+            onChange={(e) => setSelectedWorkingDir(e.target.value)}
+            className="w-full border-gray-300 rounded-md shadow-sm focus:ring-red-500 focus:border-red-500 p-2 border"
+          >
+            {workingDirs.map((dir, idx) => (
+              <option key={idx} value={dir}>{dir}</option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        <div className="mb-6 p-4 bg-yellow-50 text-yellow-800 rounded-xl border border-yellow-200">
+          Nessuna cartella di lavoro trovata. Genera un esame prima di gestire i dati.
         </div>
       )}
 
@@ -158,7 +206,7 @@ export default function Cleanup() {
             </h2>
             <div className="flex space-x-2">
               <button 
-                onClick={fetchData} 
+                onClick={() => fetchData(selectedWorkingDir)} 
                 className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
                 title="Aggiorna lista"
               >
