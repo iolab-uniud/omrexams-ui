@@ -8,8 +8,11 @@ router = APIRouter()
 DATA_DIR = os.environ.get("DATA_DIR", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data")))
 
 @router.get("/exams")
-async def get_exams(datafile: str):
-    data_filename = os.path.join(DATA_DIR, datafile)
+async def get_exams(working_dir: str):
+    jsons = [f for f in os.listdir(os.path.join(DATA_DIR, working_dir)) if f.endswith('.json')]
+    if not jsons:
+        raise HTTPException(status_code=404, detail="File JSON non trovato nella cartella di lavoro")
+    data_filename = os.path.join(DATA_DIR, working_dir, jsons[0])
     if not os.path.exists(data_filename):
         raise HTTPException(status_code=404, detail="Datafile non trovato")
     
@@ -19,7 +22,7 @@ async def get_exams(datafile: str):
             return {"exams": []}
             
         exams = db.table('exams').all()
-        sorted_dir = os.path.join(DATA_DIR, "sorted")
+        sorted_dir = os.path.join(DATA_DIR, working_dir, "sorted")
         
         for exam in exams:
             student_id = str(exam['student_id'])
@@ -30,7 +33,7 @@ async def get_exams(datafile: str):
             image_path = os.path.join(sorted_dir, first_image)
             if os.path.exists(image_path):
                 mtime = os.path.getmtime(image_path)
-                image_url = f"/api/data/sorted/{first_image}?t={int(mtime)}"
+                image_url = f"/api/data/{working_dir}/sorted/{first_image}?t={int(mtime)}"
             else:
                 image_url = None
             
@@ -55,8 +58,8 @@ async def get_students_files():
     return {"files": files}
 
 @router.get("/check_sorted")
-async def check_sorted_files():
-    sorted_dir = os.path.join(DATA_DIR, "sorted")
+async def check_sorted_files(working_dir: str):
+    sorted_dir = os.path.join(DATA_DIR, working_dir, "sorted")
     if not os.path.exists(sorted_dir):
         return {"has_sorted_files": False}
     
@@ -66,7 +69,10 @@ async def check_sorted_files():
 
 @router.post("/update")
 async def update_associations(req: BulkAssociateRequest):
-    data_filename = os.path.join(DATA_DIR, req.datafile)
+    jsons = [f for f in os.listdir(os.path.join(DATA_DIR, req.working_dir)) if f.endswith('.json')]
+    if not jsons:
+        raise HTTPException(status_code=404, detail="File JSON non trovato nella cartella di lavoro")
+    data_filename = os.path.join(DATA_DIR, req.working_dir, jsons[0])
     if not os.path.exists(data_filename):
         raise HTTPException(status_code=404, detail="Datafile non trovato")
         
@@ -102,7 +108,7 @@ async def update_associations(req: BulkAssociateRequest):
                 # However, being only by association, we may want to rename the files or simply keep the old files so as not to break links
                 # For simplicity, we rename PNG files if the id has changed
                 if str(assoc.original_id) != str(assoc.new_student_id):
-                    sorted_dir = os.path.join(DATA_DIR, "sorted")
+                    sorted_dir = os.path.join(DATA_DIR, req.working_dir, "sorted")
                     old_prefix = f"{assoc.original_id}-"
                     new_prefix = f"{assoc.new_student_id}-"
                     for filename in os.listdir(sorted_dir):

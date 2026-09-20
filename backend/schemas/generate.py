@@ -19,6 +19,7 @@ class ConfigExcel(BaseModel):
 class ConfigQuestion(BaseModel):
     source: str = Field(alias="from")
     draw: int
+    range: Optional[List[Union[int, str, None]]] = None
 
 class ConfigExam(BaseModel):
     name: Optional[str] = None
@@ -64,3 +65,4 @@ class GenerateRequest(BaseModel):
     folded: Optional[bool] = True
     rotated: Optional[bool] = False
     dyslexia_count: Optional[int] = None
+    clean_working_dir: bool = False

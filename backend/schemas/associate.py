@@ -7,5 +7,5 @@ class StudentAssociation(BaseModel):
     new_fullname: str
 
 class BulkAssociateRequest(BaseModel):
-    datafile: str
+    working_dir: str
     associations: List[StudentAssociation]

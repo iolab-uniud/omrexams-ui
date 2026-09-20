@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 class CalculateRequest(BaseModel):
-    datafile: str
+    working_dir: str
     outputfile: str
     use_custom_weights: Optional[bool] = False
     weight_correct: Optional[float] = 1.0
@@ -11,5 +11,5 @@ class CalculateRequest(BaseModel):
     weight_missing: Optional[float] = 0.0
 
 class ReportRequest(BaseModel):
-    datafile: str
+    working_dir: str
     outputfile: str
