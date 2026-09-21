@@ -6,16 +6,16 @@ import BackButton from '../components/BackButton';
 import HomeButton from '../components/HomeButton';
 import HelpButton from '../components/HelpButton';
 import { usePrompt } from '../hooks/usePrompt';
-import { correctAPI, markAPI } from '../api/client';
+import { correctAPI, markAPI, generateAPI } from '../api/client';
 import XlsxPreview from '../components/XlsxPreview';
 
 export default function Mark() {
-  const [dataFiles, setDataFiles] = useState([]);
+  const [workingDirs, setWorkingDirs] = useState([]);
   const [allFiles, setAllFiles] = useState([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
 
   // Calculation of votes
-  const [markDatafile, setMarkDatafile] = useState('');
+  const [markWorkingDir, setMarkWorkingDir] = useState('');
   const [markOutput, setMarkOutput] = useState('voti.xlsx');
   const [useCustomWeights, setUseCustomWeights] = useState(false);
   const [weightCorrect, setWeightCorrect] = useState(1.0);
@@ -26,14 +26,14 @@ export default function Mark() {
   const [markError, setMarkError] = useState(null);
 
   // Reports
-  const [reportDatafile, setReportDatafile] = useState('');
+  const [reportWorkingDir, setReportWorkingDir] = useState('');
   const [reportOutput, setReportOutput] = useState('report.xlsx');
   const [reportResult, setReportResult] = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState(null);
 
   // Analyses
-  const [analysisDatafile, setAnalysisDatafile] = useState('');
+  const [analysisWorkingDir, setAnalysisWorkingDir] = useState('');
   const [questionsList, setQuestionsList] = useState([]);
   const [selectedQuestion, setSelectedQuestion] = useState('');
   const [analysisMode, setAnalysisMode] = useState(''); // 'review' or 'students'
@@ -49,13 +49,14 @@ export default function Mark() {
 
   const loadStatus = async () => {
     try {
-      const status = await correctAPI.getStatus();
-      setDataFiles(status.data_files || []);
-      setAllFiles(status.all_files || []);
-      if (status.data_files && status.data_files.length > 0) {
-        setMarkDatafile(status.data_files[0]);
-        setReportDatafile(status.data_files[0]);
-        setAnalysisDatafile(status.data_files[0]);
+      const status = await generateAPI.getFiles();
+      setWorkingDirs(status.working_dirs || []);
+      // all_files might not be present in generateAPI.getFiles(), we can omit or handle it differently
+      setAllFiles(status.jsons || []); // We don't strictly need allFiles except to check existing outputs, but outputs are now saved in working_dirs.
+      if (status.working_dirs && status.working_dirs.length > 0) {
+        setMarkWorkingDir(status.working_dirs[0]);
+        setReportWorkingDir(status.working_dirs[0]);
+        setAnalysisWorkingDir(status.working_dirs[0]);
       }
     } catch (e) {
       console.error(e);
@@ -65,14 +66,14 @@ export default function Mark() {
   };
 
   useEffect(() => {
-    if (analysisDatafile) {
-      loadQuestionsList(analysisDatafile);
+    if (analysisWorkingDir) {
+      loadQuestionsList(analysisWorkingDir);
     }
-  }, [analysisDatafile]);
+  }, [analysisWorkingDir]);
 
-  const loadQuestionsList = async (datafile) => {
+  const loadQuestionsList = async (working_dir) => {
     try {
-      const res = await markAPI.getQuestionsList(datafile);
+      const res = await markAPI.getQuestionsList(working_dir);
       setQuestionsList(res.questions);
       if (res.questions.length > 0) {
         setSelectedQuestion(JSON.stringify(res.questions[0]));
@@ -84,7 +85,7 @@ export default function Mark() {
   };
 
   const handleCalculateMark = async () => {
-    if (!markDatafile || !markOutput) return;
+    if (!markWorkingDir || !markOutput) return;
     
     let currentOutput = markOutput;
     while (allFiles.includes(currentOutput)) {
@@ -103,7 +104,7 @@ export default function Mark() {
     setMarkError(null);
     setMarkResult(null);
     try {
-      const payload = { datafile: markDatafile, outputfile: currentOutput };
+      const payload = { working_dir: markWorkingDir, outputfile: currentOutput };
       if (useCustomWeights) {
         payload.use_custom_weights = true;
         payload.weight_correct = parseFloat(weightCorrect) || 0;
@@ -121,7 +122,7 @@ export default function Mark() {
   };
 
   const handleGenerateReport = async () => {
-    if (!reportDatafile || !reportOutput) return;
+    if (!reportWorkingDir || !reportOutput) return;
     
     let currentOutput = reportOutput;
     while (allFiles.includes(currentOutput)) {
@@ -140,7 +141,7 @@ export default function Mark() {
     setReportError(null);
     setReportResult(null);
     try {
-      const res = await markAPI.generateReport({ datafile: reportDatafile, outputfile: currentOutput });
+      const res = await markAPI.generateReport({ working_dir: reportWorkingDir, outputfile: currentOutput });
       setReportResult(res);
       await loadStatus();
     } catch (e) {
@@ -151,7 +152,7 @@ export default function Mark() {
   };
 
   const handleAnalyze = async (mode, exportFormat = null) => {
-    if (!analysisDatafile || !selectedQuestion) return;
+    if (!analysisWorkingDir || !selectedQuestion) return;
     
     let outputFilename = null;
     if (exportFormat) {
@@ -177,10 +178,10 @@ export default function Mark() {
     try {
       const q = JSON.parse(selectedQuestion);
       if (mode === 'review') {
-        const res = await markAPI.reviewQuestion(analysisDatafile, q.file, q.index, exportFormat, outputFilename);
+        const res = await markAPI.reviewQuestion(analysisWorkingDir, q.file, q.index, exportFormat, outputFilename);
         setAnalysisResult({ type: 'review', data: res.results, exported: res.file, path: res.path });
       } else {
-        const res = await markAPI.studentsWithQuestion(analysisDatafile, q.file, q.index, exportFormat, outputFilename);
+        const res = await markAPI.studentsWithQuestion(analysisWorkingDir, q.file, q.index, exportFormat, outputFilename);
         setAnalysisResult({ type: 'students', data: res.students, exported: res.file, path: res.path });
       }
       if (exportFormat) await loadStatus();
@@ -211,16 +212,16 @@ export default function Mark() {
 
         {/* Stoplight */}
         <section className="group bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-orange-400 hover:shadow-md transition-all flex items-center gap-4">
-          <div className={`w-4 h-4 rounded-full ${dataFiles.length > 0 ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.8)]' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]'}`}></div>
+          <div className={`w-4 h-4 rounded-full ${workingDirs.length > 0 ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.8)]' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]'}`}></div>
           <div>
-            <h3 className="font-semibold text-gray-800">Stato datafile degli esami (JSON)</h3>
+            <h3 className="font-semibold text-gray-800">Stato Cartella di lavoro</h3>
             <p className="text-sm text-gray-500">
-              {dataFiles.length > 0 ? `${dataFiles.length} datafile degli esami (JSON) trovati nella cartella data/.` : 'Nessun file JSON trovato. Esegui prima le fasi precedenti.'}
+              {workingDirs.length > 0 ? `${workingDirs.length} Cartelle di lavoro trovate.` : 'Nessuna cartella di lavoro trovata. Esegui prima le fasi precedenti.'}
             </p>
           </div>
         </section>
 
-        {dataFiles.length > 0 && (
+        {workingDirs.length > 0 && (
           <div className="grid grid-cols-1 gap-8">
             
             {/* Vote Calculation */}
@@ -245,9 +246,9 @@ export default function Mark() {
               <div className="flex flex-col gap-4 bg-orange-50 p-4 rounded-lg">
                 <div className="flex gap-4 items-end">
                   <div className="flex-1">
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Seleziona datafile degli esami (JSON):</label>
-                    <select value={markDatafile} onChange={(e) => setMarkDatafile(e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500">
-                      {dataFiles.map(df => <option key={df} value={df}>{df}</option>)}
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Seleziona Cartella di lavoro:</label>
+                    <select value={markWorkingDir} onChange={(e) => setMarkWorkingDir(e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500">
+                      {workingDirs.map(df => <option key={df} value={df}>{df}</option>)}
                     </select>
                   </div>
                   <div className="flex-1">
@@ -292,8 +293,8 @@ export default function Mark() {
               
               {markResult && (
                 <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-lg text-emerald-800">
-                  <p className="font-semibold">Calcolo dei voti completato e file excel presente nella cartella data/ del progetto</p>
-                  <XlsxPreview filename={markResult.file} headerRows={3} indexCols={1} centerHeaders={true} rotateLowestHeaders={true} />
+                  <p className="font-semibold">Calcolo dei voti completato. File excel salvato nella cartella di lavoro ({markWorkingDir})</p>
+                  <XlsxPreview filename={markResult.file} folder={markWorkingDir} headerRows={3} indexCols={1} centerHeaders={true} rotateLowestHeaders={true} />
                 </div>
               )}
             </section>
@@ -316,9 +317,9 @@ export default function Mark() {
               </h2>
               <div className="flex gap-4 items-end bg-orange-50 p-4 rounded-lg">
                 <div className="flex-1">
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Seleziona datafile degli esami (JSON):</label>
-                  <select value={reportDatafile} onChange={(e) => setReportDatafile(e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-purple-500">
-                    {dataFiles.map(df => <option key={df} value={df}>{df}</option>)}
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Seleziona Cartella di lavoro:</label>
+                  <select value={reportWorkingDir} onChange={(e) => setReportWorkingDir(e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-purple-500">
+                    {workingDirs.map(df => <option key={df} value={df}>{df}</option>)}
                   </select>
                 </div>
                 <div className="flex-1">
@@ -338,8 +339,8 @@ export default function Mark() {
               
               {reportResult && (
                 <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-lg text-emerald-800">
-                  <p className="font-semibold">Generazione report completata e file excel presente nella cartella data/ del progetto</p>
-                  <XlsxPreview filename={reportResult.file} headerRows={2} indexCols={2} centerHeaders={true} rotateFirstIndex={true} />
+                  <p className="font-semibold">Generazione report completata. File excel salvato nella cartella di lavoro ({reportWorkingDir})</p>
+                  <XlsxPreview filename={reportResult.file} folder={reportWorkingDir} headerRows={2} indexCols={2} centerHeaders={true} rotateFirstIndex={true} />
                 </div>
               )}
             </section>
@@ -357,9 +358,9 @@ export default function Mark() {
               </h2>
               <div className="flex flex-col md:flex-row gap-4 items-end bg-orange-50 p-4 rounded-lg">
                 <div className="flex-1 w-full">
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Seleziona datafile degli esami (JSON):</label>
-                  <select value={analysisDatafile} onChange={(e) => setAnalysisDatafile(e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-orange-500">
-                    {dataFiles.map(df => <option key={df} value={df}>{df}</option>)}
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Seleziona Cartella di lavoro:</label>
+                  <select value={analysisWorkingDir} onChange={(e) => setAnalysisWorkingDir(e.target.value)} className="w-full border p-2 rounded focus:ring-2 focus:ring-orange-500">
+                    {workingDirs.map(df => <option key={df} value={df}>{df}</option>)}
                   </select>
                 </div>
                 <div className="flex-1 w-full">
@@ -392,7 +393,7 @@ export default function Mark() {
               
               {analysisResult && analysisResult.exported && (
                 <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-lg text-emerald-800">
-                  <p className="font-semibold">Analisi esportata con successo come <strong>{analysisResult.exported}</strong> nella cartella data/ del progetto.</p>
+                  <p className="font-semibold">Analisi esportata con successo come <strong>{analysisResult.exported}</strong> nella cartella di lavoro ({analysisWorkingDir}).</p>
                 </div>
               )}
 

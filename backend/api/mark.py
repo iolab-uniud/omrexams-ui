@@ -13,10 +13,12 @@ router = APIRouter()
 DATA_DIR = os.environ.get("DATA_DIR", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data")))
 
 @router.get("/questions_list")
-async def get_questions_list(datafile: str):
-    data_filename = os.path.join(DATA_DIR, datafile)
-    if not os.path.exists(data_filename):
-        raise HTTPException(status_code=404, detail="Datafile non trovato")
+async def get_questions_list(working_dir: str):
+    work_dir = os.path.join(DATA_DIR, working_dir)
+    json_files = glob.glob(os.path.join(work_dir, "*.json"))
+    if not json_files:
+        raise HTTPException(status_code=404, detail="Datafile JSON non trovato")
+    data_filename = json_files[0]
         
     questions = set()
     with TinyDB(data_filename) as db:
@@ -28,11 +30,13 @@ async def get_questions_list(datafile: str):
 
 @router.post("/calculate")
 async def calculate_mark(req: CalculateRequest):
-    data_filename = os.path.join(DATA_DIR, req.datafile)
-    output_filename = os.path.join(DATA_DIR, req.outputfile)
+    work_dir = os.path.join(DATA_DIR, req.working_dir)
+    json_files = glob.glob(os.path.join(work_dir, "*.json"))
+    if not json_files:
+        raise HTTPException(status_code=404, detail="Datafile JSON non trovato")
+    data_filename = json_files[0]
     
-    if not os.path.exists(data_filename):
-        raise HTTPException(status_code=404, detail="Datafile non trovato")
+    output_filename = os.path.join(work_dir, req.outputfile)
         
     try:
         marker = Mark(data_filename, output_filename)
@@ -41,17 +45,19 @@ async def calculate_mark(req: CalculateRequest):
             marker.mark(marking_function=marking_func, include_missing=True)
         else:
             marker.mark(marking_function=custom_correction, include_missing=True)
-        return {"status": "success", "message": f"Calcolo dei voti completato", "file": req.outputfile, "path": DATA_DIR}
+        return {"status": "success", "message": f"Calcolo dei voti completato", "file": req.outputfile, "path": work_dir}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/report")
 async def generate_report(req: ReportRequest):
-    data_filename = os.path.join(DATA_DIR, req.datafile)
-    output_filename = os.path.join(DATA_DIR, req.outputfile)
+    work_dir = os.path.join(DATA_DIR, req.working_dir)
+    json_files = glob.glob(os.path.join(work_dir, "*.json"))
+    if not json_files:
+        raise HTTPException(status_code=404, detail="Datafile JSON non trovato")
+    data_filename = json_files[0]
     
-    if not os.path.exists(data_filename):
-        raise HTTPException(status_code=404, detail="Datafile non trovato")
+    output_filename = os.path.join(work_dir, req.outputfile)
         
     try:
         with TinyDB(data_filename) as db:
@@ -95,15 +101,17 @@ async def generate_report(req: ReportRequest):
             else:
                 raise Exception("Nessun dato di correzione presente.")
                 
-        return {"status": "success", "message": "Report generato", "file": req.outputfile, "path": DATA_DIR}
+        return {"status": "success", "message": "Report generato", "file": req.outputfile, "path": work_dir}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/review_question")
-async def review_question(datafile: str, question_file: str, question: int, export_format: str = None, output_filename: str = None):
-    data_filename = os.path.join(DATA_DIR, datafile)
-    if not os.path.exists(data_filename):
-        raise HTTPException(status_code=404, detail="Datafile non trovato")
+async def review_question(working_dir: str, question_file: str, question: int, export_format: str = None, output_filename: str = None):
+    work_dir = os.path.join(DATA_DIR, working_dir)
+    json_files = glob.glob(os.path.join(work_dir, "*.json"))
+    if not json_files:
+        raise HTTPException(status_code=404, detail="Datafile JSON non trovato")
+    data_filename = json_files[0]
         
     try:
         with TinyDB(data_filename) as db:
@@ -140,7 +148,7 @@ async def review_question(datafile: str, question_file: str, question: int, expo
                 })
             
             if export_format and output_filename:
-                out_path = os.path.join(DATA_DIR, output_filename)
+                out_path = os.path.join(work_dir, output_filename)
                 if export_format == 'excel':
                     df = pd.DataFrame(table)
                     # Format arrays as strings for Excel
@@ -161,17 +169,19 @@ async def review_question(datafile: str, question_file: str, question: int, expo
                     with open(out_path, 'w', encoding='utf-8') as f:
                         f.write(md_text)
                 
-                return {"status": "success", "message": f"Esportato in {output_filename}", "file": output_filename, "path": DATA_DIR, "results": table}
+                return {"status": "success", "message": f"Esportato in {output_filename}", "file": output_filename, "path": work_dir, "results": table}
 
             return {"results": table}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/students_with_question")
-async def students_with_question(datafile: str, question_file: str, question: int, export_format: str = None, output_filename: str = None):
-    data_filename = os.path.join(DATA_DIR, datafile)
-    if not os.path.exists(data_filename):
-        raise HTTPException(status_code=404, detail="Datafile non trovato")
+async def students_with_question(working_dir: str, question_file: str, question: int, export_format: str = None, output_filename: str = None):
+    work_dir = os.path.join(DATA_DIR, working_dir)
+    json_files = glob.glob(os.path.join(work_dir, "*.json"))
+    if not json_files:
+        raise HTTPException(status_code=404, detail="Datafile JSON non trovato")
+    data_filename = json_files[0]
         
     try:
         students = []
@@ -184,7 +194,7 @@ async def students_with_question(datafile: str, question_file: str, question: in
         
         
         if export_format and output_filename:
-            out_path = os.path.join(DATA_DIR, output_filename)
+            out_path = os.path.join(work_dir, output_filename)
             if export_format == 'excel':
                 df = pd.DataFrame(students, columns=["Student ID"])
                 df.to_excel(out_path, index=False)
@@ -194,7 +204,7 @@ async def students_with_question(datafile: str, question_file: str, question: in
                 with open(out_path, 'w', encoding='utf-8') as f:
                     f.write(md_text)
             
-            return {"status": "success", "message": f"Esportato in {output_filename}", "file": output_filename, "path": DATA_DIR, "students": students}
+            return {"status": "success", "message": f"Esportato in {output_filename}", "file": output_filename, "path": work_dir, "students": students}
 
         return {"students": students}
     except Exception as e:

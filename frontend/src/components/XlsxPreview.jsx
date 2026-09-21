@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { dashboardAPI } from '../api/client';
 
-export default function XlsxPreview({ filename, headerRows = 1, indexCols = 0, centerHeaders = false, rotateFirstIndex = false, rotateLowestHeaders = false }) {
+export default function XlsxPreview({ filename, folder, headerRows = 1, indexCols = 0, centerHeaders = false, rotateFirstIndex = false, rotateLowestHeaders = false }) {
   const [htmlContent, setHtmlContent] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -14,7 +14,7 @@ export default function XlsxPreview({ filename, headerRows = 1, indexCols = 0, c
         setLoading(true);
         setError(null);
         
-        const response = await dashboardAPI.previewExcel(filename, headerRows, indexCols, centerHeaders);
+        const response = await dashboardAPI.previewExcel(filename, folder, headerRows, indexCols, centerHeaders);
         setHtmlContent(response.html);
       } catch (err) {
         console.error(err);
@@ -25,7 +25,7 @@ export default function XlsxPreview({ filename, headerRows = 1, indexCols = 0, c
     };
 
     fetchExcel();
-  }, [filename, headerRows, indexCols, centerHeaders]);
+  }, [filename, folder, headerRows, indexCols, centerHeaders]);
 
   if (loading) return <div className="p-4 text-center text-gray-500 animate-pulse">Caricamento anteprima Excel in corso...</div>;
   if (error) return <div className="p-4 text-center text-red-500 bg-red-50 rounded">Nessuna anteprima disponibile ({error})</div>;

@@ -9,25 +9,25 @@ router = APIRouter()
 DATA_DIR = os.environ.get("DATA_DIR", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data")))
 
 @router.get("/scans")
-async def get_scans():
-    scans_dir = os.path.join(DATA_DIR, "scans")
+async def get_scans(working_dir: str):
+    scans_dir = os.path.join(DATA_DIR, working_dir, "scans")
     if not os.path.exists(scans_dir):
         return {"scans": []}
     files = glob.glob(os.path.join(scans_dir, "*.pdf"))
     return {"scans": [os.path.basename(f) for f in files]}
 
 @router.get("/corrected")
-async def get_corrected():
-    corrected_dir = os.path.join(DATA_DIR, "corrected")
+async def get_corrected(working_dir: str):
+    corrected_dir = os.path.join(DATA_DIR, working_dir, "corrected")
     if not os.path.exists(corrected_dir):
         return {"corrected": []}
     files = glob.glob(os.path.join(corrected_dir, "*.pdf"))
     return {"corrected": [os.path.basename(f) for f in files]}
 
 @router.get("/corrected_mapping")
-async def get_corrected_mapping(pdf_name: str):
+async def get_corrected_mapping(working_dir: str, pdf_name: str):
     import json
-    json_path = os.path.join(DATA_DIR, "corrected", "sidecar", pdf_name + ".json")
+    json_path = os.path.join(DATA_DIR, working_dir, "corrected", "sidecar", pdf_name + ".json")
     if not os.path.exists(json_path):
         raise HTTPException(status_code=404, detail="Mapping JSON non trovato per questo PDF")
     with open(json_path, "r") as f:
@@ -35,8 +35,11 @@ async def get_corrected_mapping(pdf_name: str):
     return {"mapping": mapping}
 
 @router.get("/missing")
-async def get_missing(datafile: str):
-    data_filename = os.path.join(DATA_DIR, datafile)
+async def get_missing(working_dir: str):
+    jsons = [f for f in os.listdir(os.path.join(DATA_DIR, working_dir)) if f.endswith('.json')]
+    if not jsons:
+        raise HTTPException(status_code=404, detail="File JSON non trovato nella cartella di lavoro")
+    data_filename = os.path.join(DATA_DIR, working_dir, jsons[0])
     if not os.path.exists(data_filename):
         raise HTTPException(status_code=404, detail="Datafile non trovato")
     
@@ -63,7 +66,7 @@ async def get_missing(datafile: str):
 
             if not corr or is_doubtful:
                 # Find NPCs in data/sorted
-                sorted_dir = os.path.join(DATA_DIR, "sorted")
+                sorted_dir = os.path.join(DATA_DIR, working_dir, "sorted")
                 pngs = glob.glob(os.path.join(sorted_dir, f"{student_id}-*.png"))
                 pngs = [f"{os.path.basename(p)}?t={int(os.path.getmtime(p))}" for p in pngs]
                 missing_students.append({
@@ -75,8 +78,11 @@ async def get_missing(datafile: str):
     return {"missing": missing_students}
 
 @router.get("/student_data")
-async def get_student_data(datafile: str, student_id: str):
-    data_filename = os.path.join(DATA_DIR, datafile)
+async def get_student_data(working_dir: str, student_id: str):
+    jsons = [f for f in os.listdir(os.path.join(DATA_DIR, working_dir)) if f.endswith('.json')]
+    if not jsons:
+        raise HTTPException(status_code=404, detail="File JSON non trovato nella cartella di lavoro")
+    data_filename = os.path.join(DATA_DIR, working_dir, jsons[0])
     if not os.path.exists(data_filename):
         raise HTTPException(status_code=404, detail="Datafile non trovato")
         
@@ -138,7 +144,10 @@ async def get_student_data(datafile: str, student_id: str):
 
 @router.post("/force_answer")
 async def force_answer(req: ForceAnswerRequest):
-    data_filename = os.path.join(DATA_DIR, req.datafile)
+    jsons = [f for f in os.listdir(os.path.join(DATA_DIR, req.working_dir)) if f.endswith('.json')]
+    if not jsons:
+        raise HTTPException(status_code=404, detail="File JSON non trovato nella cartella di lavoro")
+    data_filename = os.path.join(DATA_DIR, req.working_dir, jsons[0])
     with TinyDB(data_filename) as db:
         Exam = Query()
         
@@ -175,7 +184,10 @@ async def force_answer(req: ForceAnswerRequest):
 
 @router.post("/force_answers")
 async def force_answers(req: ForceAnswersRequest):
-    data_filename = os.path.join(DATA_DIR, req.datafile)
+    jsons = [f for f in os.listdir(os.path.join(DATA_DIR, req.working_dir)) if f.endswith('.json')]
+    if not jsons:
+        raise HTTPException(status_code=404, detail="File JSON non trovato nella cartella di lavoro")
+    data_filename = os.path.join(DATA_DIR, req.working_dir, jsons[0])
     with TinyDB(data_filename) as db:
         Exam = Query()
         

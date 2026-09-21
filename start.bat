@@ -55,7 +55,7 @@ echo [2/4] Aggiornamento incrementale dei container Docker...
 echo ^(NOTA: La primissima volta questa operazione potrebbe richiedere
 echo diversi minuti per scaricare le immagini base e compilare il codice^)
 
-docker-compose build
+docker-compose build --no-cache
 if %errorlevel% neq 0 (
     echo.
     echo ==============================================

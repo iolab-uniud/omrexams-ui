@@ -42,8 +42,12 @@ def get_status():
     )
 
 @router.get("/preview_excel")
-def preview_excel(filename: str, headerRows: int = 1, indexCols: int = 0, centerHeaders: bool = False):
-    file_path = os.path.join(DATA_DIR, filename)
+def preview_excel(filename: str, folder: str = None, headerRows: int = 1, indexCols: int = 0, centerHeaders: bool = False):
+    if folder:
+        file_path = os.path.join(DATA_DIR, folder, filename)
+    else:
+        file_path = os.path.join(DATA_DIR, filename)
+        
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File non trovato")
     

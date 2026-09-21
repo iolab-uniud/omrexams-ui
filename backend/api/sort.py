@@ -1,7 +1,7 @@
 import os
 import glob
 import shutil
-from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException
+from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException, Query
 from typing import List, Dict, Any
 from omrexams.sort import Sort
 from schemas.sort import SortRequest
@@ -10,8 +10,6 @@ from api.sse import task_manager
 router = APIRouter()
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data")))
-SCANS_DIR = os.path.join(DATA_DIR, "scans")
-SORTED_DIR = os.path.join(DATA_DIR, "sorted")
 
 class SortProgressCallback:
     def __init__(self, task_id: str):
@@ -24,28 +22,38 @@ def run_sort_task(task_id: str, req: SortRequest):
     try:
         task_manager.update_task(task_id, 0, 100, 'Inizializzazione sort...')
         
+        work_dir = os.path.join(DATA_DIR, req.working_dir)
+        scans_dir = os.path.join(work_dir, "scans")
+        sorted_dir = os.path.join(work_dir, "sorted")
+        
+        if not os.path.exists(sorted_dir):
+            os.makedirs(sorted_dir)
+
         if req.clean_sorted:
-            for f in glob.glob(os.path.join(SORTED_DIR, "*.png")):
+            for f in glob.glob(os.path.join(sorted_dir, "*.png")):
                 try:
                     os.remove(f)
                 except:
                     pass
         
         # Recover selected pdfs
-        scanned_files = [os.path.join(SCANS_DIR, f) for f in req.selected_scans]
+        scanned_files = [os.path.join(scans_dir, f) for f in req.selected_scans]
         scanned_files = [f for f in scanned_files if os.path.exists(f)]
         if not scanned_files:
             raise Exception("Nessun file PDF selezionato o file non trovati")
             
-        datafile_path = os.path.join(DATA_DIR, req.datafile)
-        if not os.path.exists(datafile_path):
-            raise Exception(f"Datafile non trovato: {datafile_path}")
+        json_files = glob.glob(os.path.join(work_dir, "*.json"))
+        if not json_files:
+            raise Exception("Nessun file JSON trovato nella directory di lavoro")
+        if len(json_files) > 1:
+            raise Exception("Trovati multipli file JSON nella directory di lavoro")
+        datafile_path = json_files[0]
             
         progress_callback = SortProgressCallback(task_id)
         
         sorter = Sort(
             scanned=scanned_files,
-            sorted=SORTED_DIR,
+            sorted=sorted_dir,
             doublecheck=False, # TODO: possibly make it configurable
             progress_callback=progress_callback
         )
@@ -62,13 +70,20 @@ def run_sort_task(task_id: str, req: SortRequest):
 
 
 @router.get("/status")
-def get_status():
-    if not os.path.exists(SCANS_DIR):
-        os.makedirs(SCANS_DIR)
+def get_status(folder: str = Query(None)):
+    if not folder:
+        return {}
+    
+    work_dir = os.path.join(DATA_DIR, folder)
+    scans_dir = os.path.join(work_dir, "scans")
+    sorted_dir = os.path.join(work_dir, "sorted")
+
+    if not os.path.exists(scans_dir):
+        os.makedirs(scans_dir)
         
-    scans_files = glob.glob(os.path.join(SCANS_DIR, "*.pdf"))
-    data_files = [os.path.basename(f) for f in glob.glob(os.path.join(DATA_DIR, "*.json"))]
-    sorted_pngs = glob.glob(os.path.join(SORTED_DIR, "*.png"))
+    scans_files = glob.glob(os.path.join(scans_dir, "*.pdf"))
+    data_files = [os.path.basename(f) for f in glob.glob(os.path.join(work_dir, "*.json"))]
+    sorted_pngs = glob.glob(os.path.join(sorted_dir, "*.png"))
     
     return {
         "has_scans": len(scans_files) > 0,
@@ -79,14 +94,16 @@ def get_status():
     }
 
 @router.post("/upload")
-async def upload_scan(file: UploadFile = File(...)):
-    if not os.path.exists(SCANS_DIR):
-        os.makedirs(SCANS_DIR)
+async def upload_scan(folder: str = Query(...), file: UploadFile = File(...)):
+    work_dir = os.path.join(DATA_DIR, folder)
+    scans_dir = os.path.join(work_dir, "scans")
+    if not os.path.exists(scans_dir):
+        os.makedirs(scans_dir)
         
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Il file deve essere un PDF")
         
-    file_path = os.path.join(SCANS_DIR, file.filename)
+    file_path = os.path.join(scans_dir, file.filename)
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -98,4 +115,4 @@ async def upload_scan(file: UploadFile = File(...)):
 async def start_sort(req: SortRequest, background_tasks: BackgroundTasks):
     task_id = task_manager.create_task()
     background_tasks.add_task(run_sort_task, task_id, req)
-    return {"task_id": task_id, "data_dir": SORTED_DIR}
+    return {"task_id": task_id, "data_dir": os.path.join(DATA_DIR, req.working_dir, "sorted")}

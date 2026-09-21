@@ -1,6 +1,6 @@
 import os
 import glob
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Query
 from typing import List, Dict, Any
 from omrexams.correct import Correct
 from schemas.correct import CorrectRequest
@@ -9,7 +9,6 @@ from api.sse import task_manager
 router = APIRouter()
 
 DATA_DIR = os.environ.get("DATA_DIR", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data")))
-SORTED_DIR = os.path.join(DATA_DIR, "sorted")
 
 class CorrectProgressCallback:
     def __init__(self, task_id: str):
@@ -22,15 +21,22 @@ def run_correct_task(task_id: str, req: CorrectRequest):
     try:
         task_manager.update_task(task_id, 0, 100, 'Inizializzazione correzione...')
         
-        # Use the full name of the selected json file
-        data_filename = os.path.join(DATA_DIR, req.datafile)
+        work_dir = os.path.join(DATA_DIR, req.working_dir)
+        sorted_dir = os.path.join(work_dir, "sorted")
+        
+        json_files = glob.glob(os.path.join(work_dir, "*.json"))
+        if not json_files:
+            raise Exception("Nessun file JSON trovato nella directory di lavoro")
+        if len(json_files) > 1:
+            raise Exception("Trovati multipli file JSON nella directory di lavoro")
+        data_filename = json_files[0]
         
         # Determine the output file
         if req.produce_pdf and req.pdf_filename:
             pdf_name = req.pdf_filename
             if not pdf_name.endswith('.pdf'):
                 pdf_name += '.pdf'
-            corrected_dir = os.path.join(DATA_DIR, "corrected")
+            corrected_dir = os.path.join(work_dir, "corrected")
             os.makedirs(corrected_dir, exist_ok=True)
             corrected_out = os.path.join(corrected_dir, pdf_name)
         else:
@@ -39,7 +45,7 @@ def run_correct_task(task_id: str, req: CorrectRequest):
         progress_callback = CorrectProgressCallback(task_id)
         
         corrector = Correct(
-            sorted=SORTED_DIR,
+            sorted=sorted_dir,
             corrected=corrected_out,
             data_filename=data_filename,
             resolution=300, # Defaulting to 300
@@ -51,8 +57,9 @@ def run_correct_task(task_id: str, req: CorrectRequest):
         corrector.correct()
         
         # Task completed successfully
+        unique_pages = len(set(w[0] for w in corrector.watch_results))
         result_data = {
-            "manual_checks_needed": len(corrector.watch_results)
+            "manual_checks_needed": unique_pages
         }
         task_manager.complete_task(task_id, result_data)
         
@@ -62,20 +69,26 @@ def run_correct_task(task_id: str, req: CorrectRequest):
         task_manager.fail_task(task_id, str(e))
 
 @router.get("/status")
-def get_status():
-    if not os.path.exists(SORTED_DIR):
-        os.makedirs(SORTED_DIR)
+def get_status(folder: str = Query(None)):
+    if not folder:
+        return {}
         
-    sorted_files = glob.glob(os.path.join(SORTED_DIR, "*.png"))
-    data_files = [os.path.basename(f) for f in glob.glob(os.path.join(DATA_DIR, "*.json"))]
-    corrected_dir = os.path.join(DATA_DIR, "corrected")
+    work_dir = os.path.join(DATA_DIR, folder)
+    sorted_dir = os.path.join(work_dir, "sorted")
+    corrected_dir = os.path.join(work_dir, "corrected")
+    
+    if not os.path.exists(sorted_dir):
+        os.makedirs(sorted_dir)
+        
+    sorted_files = glob.glob(os.path.join(sorted_dir, "*.png"))
+    data_files = [os.path.basename(f) for f in glob.glob(os.path.join(work_dir, "*.json"))]
     if not os.path.exists(corrected_dir):
         os.makedirs(corrected_dir)
     pdf_files = [os.path.basename(f) for f in glob.glob(os.path.join(corrected_dir, "*.pdf"))]
     
     all_files = []
-    if os.path.exists(DATA_DIR):
-        all_files = [f for f in os.listdir(DATA_DIR) if os.path.isfile(os.path.join(DATA_DIR, f))]
+    if os.path.exists(work_dir):
+        all_files = [f for f in os.listdir(work_dir) if os.path.isfile(os.path.join(work_dir, f))]
     
     return {
         "has_datafile": len(data_files) > 0,

@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FileEdit } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { generateAPI } from '../api/client';
-import { ArrowLeft, Save, Plus, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Play, Upload, CheckCircle2, AlertCircle, ArrowLeft, FilePlus, Save, Trash2, Plus, GripVertical, FileEdit } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import BackButton from '../components/BackButton';
 import HomeButton from '../components/HomeButton';
 import HelpButton from '../components/HelpButton';
 import { usePrompt } from '../hooks/usePrompt';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
+import { translateToLatex, latexToHtml } from '../utils/latexTranslator';
 
 export default function QuestionsEditor() {
   const navigate = useNavigate();
@@ -21,6 +23,16 @@ export default function QuestionsEditor() {
   const [questions, setQuestions] = useState([]);
   const [status, setStatus] = useState(null);
   const { prompt, PromptModal } = usePrompt();
+
+  const modules = useMemo(() => ({
+    toolbar: {
+      container: [
+        ['bold', 'italic', 'underline'],
+        [{ 'align': [] }],
+        ['clean']
+      ]
+    }
+  }), []);
 
   useEffect(() => {
     generateAPI.getFiles().then(res => {
@@ -47,12 +59,12 @@ export default function QuestionsEditor() {
         const parsedQuestions = blocks.map((block, idx) => {
           const closedMatch = block.match(/^##\s+(.+)/m);
           if (closedMatch) {
-            const qText = closedMatch[1].trim();
+            const qText = latexToHtml(closedMatch[1].trim());
             const answers = [];
             const ansRegex = /^- \[(x|X| )\]\s+(.+)/gm;
             let m;
             while ((m = ansRegex.exec(block)) !== null) {
-              answers.push({ correct: m[1].toLowerCase() === 'x', text: m[2].trim() });
+              answers.push({ correct: m[1].toLowerCase() === 'x', text: latexToHtml(m[2].trim()) });
             }
             return {
               id: Date.now() + idx,
@@ -66,17 +78,23 @@ export default function QuestionsEditor() {
           }
           const openMatch = block.match(/^###\s+(.+)/m);
           if (openMatch) {
-            const qText = openMatch[1].trim();
-            let vspace = 0.5;
-            let lines = 5;
-            const vspaceMatch = block.match(/\\vspace\{([\d.-]+)cm\}/);
-            if (vspaceMatch) {
-              const k = parseFloat(vspaceMatch[1]);
-              vspace = parseFloat((0.8 + k).toFixed(2));
-            }
-            const linesMatch = block.match(/\{lines:([\d.-]+)cm\}/);
+            const qText = latexToHtml(openMatch[1].trim());
+            let vspace = openMatch[1].trim().length >= 85 ? 1.8 : 1.9;
+            let lines = 8;
+            let answerStyle = 'lines';
+            const vspaceMatches = [...block.matchAll(/\\vspace\{([\d.-]+)(?:cm|em)\}/g)];
+            const linesMatch = block.match(/\{lines:([\d.-]+)(?:cm|em)\}/);
+            
             if (linesMatch) {
               lines = parseFloat(linesMatch[1]);
+              answerStyle = 'lines';
+              if (vspaceMatches.length > 0) {
+                const k = parseFloat(vspaceMatches[0][1]);
+                vspace = parseFloat((k + 2.3).toFixed(2));
+              }
+            } else if (vspaceMatches.length > 0) {
+              lines = parseFloat(vspaceMatches[0][1]);
+              answerStyle = 'blank';
             }
             return {
               id: Date.now() + idx,
@@ -85,7 +103,8 @@ export default function QuestionsEditor() {
               answers: [],
               lines,
               vspace,
-              vspaceModified: true
+              vspaceModified: true,
+              answerStyle
             };
           }
           return null;
@@ -111,9 +130,10 @@ export default function QuestionsEditor() {
         type,
         text: '',
         answers: type === 'closed' ? [{ text: '', correct: false }, { text: '', correct: false }] : [],
-        lines: 5,
-        vspace: 0.5,
-        vspaceModified: false
+        lines: 8,
+        vspace: 1.9,
+        vspaceModified: false,
+        answerStyle: 'lines'
       }
     ]);
   };
@@ -122,7 +142,8 @@ export default function QuestionsEditor() {
     setQuestions(questions.map(q => {
       if (q.id === id) {
         if (field === 'text' && q.type === 'open' && !q.vspaceModified) {
-          return { ...q, text: value, vspace: value.length >= 85 ? 0.6 : 0.5 };
+          const vLen = value ? value.length : 0;
+          return { ...q, text: value, vspace: vLen >= 85 ? 1.8 : 1.9 };
         }
         if (field === 'vspace') {
           return { ...q, [field]: value, vspaceModified: true };
@@ -251,15 +272,19 @@ export default function QuestionsEditor() {
     questions.forEach(q => {
       markdown += '---\n\n';
       if (q.type === 'closed') {
-        markdown += `## ${q.text}\n`;
+        markdown += `## ${translateToLatex(q.text)}\n`;
         q.answers.forEach(a => {
-          markdown += `- [${a.correct ? 'x' : ' '}] ${a.text}\n`;
+          markdown += `- [${a.correct ? 'x' : ' '}] ${translateToLatex(a.text)}\n`;
         });
       } else {
-        markdown += `### ${q.text}\n`;
-        const k = - (0.8 - (parseFloat(q.vspace) || 0));
-        markdown += `\\vspace{${Number(k.toFixed(2))}cm}\n`;
-        markdown += `{lines:${q.lines}cm}\n`;
+        markdown += `### ${translateToLatex(q.text)}\n`;
+        if (q.answerStyle === 'blank') {
+          markdown += `\\vspace{${q.lines}em}\n`;
+        } else {
+          const k = (parseFloat(q.vspace) || 0) - 2.3;
+          markdown += `\\vspace{${Number(k.toFixed(2))}em}\n`;
+          markdown += `{lines:${q.lines}em}\n`;
+        }
       }
       markdown += '\n';
     });
@@ -332,8 +357,8 @@ export default function QuestionsEditor() {
                 <p className="font-semibold text-gray-800 mb-1">Domande aperte:</p>
                 <p>Nelle domande aperte è possibile personalizzare due parametri chiave:</p>
                 <ul className="list-disc pl-5 mt-1 space-y-1">
-                  <li>Lo spazio totale (in cm) da dedicare alla risposta dello studente.</li>
-                  <li>La spaziatura iniziale tra il testo della domanda e la prima riga utile per rispondere. Di default è impostata a <strong>0.5cm</strong> se la domanda è breve (meno di 85 caratteri, sta in una riga), oppure a <strong>0.6cm</strong> se la domanda è più lunga (85 caratteri o più).</li>
+                  <li>Lo spazio totale (in em) da dedicare alla risposta dello studente.</li>
+                  <li>La spaziatura iniziale tra il testo della domanda e la prima riga utile per rispondere. Di default è impostata a <strong>0.4em</strong> se la domanda è breve (meno di 85 caratteri, sta in una riga), oppure a <strong>0.2em</strong> se la domanda è più lunga (85 caratteri o più).</li>
                 </ul>
               </div>
             </div>
@@ -431,40 +456,76 @@ export default function QuestionsEditor() {
               <label className="flex justify-between items-end text-sm font-medium text-gray-700 mb-1">
                 <span>Testo della domanda</span>
                 {q.type === 'open' && (
-                  <span className="text-xs text-gray-500">{q.text.length} caratteri</span>
+                  <span className="text-xs text-gray-500">{q.text ? q.text.length : 0} caratteri</span>
                 )}
               </label>
-              <textarea 
-                className="w-full border rounded-lg p-2"
-                rows="2"
-                value={q.text}
-                onChange={(e) => updateQuestion(q.id, 'text', e.target.value)}
-                placeholder="Inserisci la domanda..."
-              />
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <ReactQuill 
+                  theme="snow"
+                  value={q.text || ''}
+                  onChange={(val) => updateQuestion(q.id, 'text', val)}
+                  modules={modules}
+                  placeholder="Inserisci la domanda..."
+                  className="rounded-b-lg"
+                />
+              </div>
             </div>
 
             {q.type === 'open' && (
-              <div className="flex flex-col sm:flex-row gap-4 mb-4">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Spazio per la risposta (in cm)</label>
-                  <input 
-                    type="number" 
-                    min="1"
-                    className="w-full border rounded-lg p-2"
-                    value={q.lines}
-                    onChange={(e) => updateQuestion(q.id, 'lines', e.target.value)}
-                  />
+              <div className="flex flex-col gap-4 mb-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Stile dello spazio per la risposta</label>
+                    <div className="flex items-center gap-4 mt-2">
+                      <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="radio"
+                          name={`style-${q.id}`}
+                          value="lines"
+                          checked={q.answerStyle !== 'blank'}
+                          onChange={(e) => updateQuestion(q.id, 'answerStyle', e.target.value)}
+                          className="w-4 h-4 text-blue-600"
+                        />
+                        Righe
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="radio"
+                          name={`style-${q.id}`}
+                          value="blank"
+                          checked={q.answerStyle === 'blank'}
+                          onChange={(e) => updateQuestion(q.id, 'answerStyle', e.target.value)}
+                          className="w-4 h-4 text-blue-600"
+                        />
+                        Spazio bianco
+                      </label>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Spazio dall'inizio della risposta (in cm)</label>
-                  <input 
-                    type="number" 
-                    min="0"
-                    step="0.1"
-                    className="w-full border rounded-lg p-2"
-                    value={q.vspace}
-                    onChange={(e) => updateQuestion(q.id, 'vspace', e.target.value)}
-                  />
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Dimensione spazio (in em)</label>
+                    <input 
+                      type="number" 
+                      min="1"
+                      className="w-full border rounded-lg p-2"
+                      value={q.lines}
+                      onChange={(e) => updateQuestion(q.id, 'lines', e.target.value)}
+                    />
+                  </div>
+                  {q.answerStyle !== 'blank' && (
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Spazio dall'inizio della risposta (in em)</label>
+                      <input 
+                        type="number" 
+                        min="0"
+                        step="0.1"
+                        className="w-full border rounded-lg p-2"
+                        value={q.vspace}
+                        onChange={(e) => updateQuestion(q.id, 'vspace', e.target.value)}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -482,13 +543,16 @@ export default function QuestionsEditor() {
                         className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                         title="Segna come risposta corretta"
                       />
-                      <input 
-                        type="text"
-                        className={`flex-1 border rounded-lg p-2 ${ans.correct ? 'border-green-400 bg-green-50' : ''}`}
-                        value={ans.text}
-                        onChange={(e) => updateAnswer(q.id, aIdx, 'text', e.target.value)}
-                        placeholder={`Risposta ${aIdx + 1}`}
-                      />
+                      <div className={`flex-1 bg-white rounded-lg shadow-sm border ${ans.correct ? 'border-green-400 bg-green-50' : 'border-gray-200'}`}>
+                        <ReactQuill 
+                          theme="snow"
+                          value={ans.text || ''}
+                          onChange={(val) => updateAnswer(q.id, aIdx, 'text', val)}
+                          modules={modules}
+                          placeholder={`Risposta ${aIdx + 1}`}
+                          className="rounded-b-lg"
+                        />
+                      </div>
                       <button onClick={() => removeAnswer(q.id, aIdx)} className="text-gray-400 hover:text-red-500 p-2">
                         <Trash2 size={18} />
                       </button>

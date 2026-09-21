@@ -31,9 +31,9 @@ router = APIRouter()
 DATA_DIR = os.environ.get("DATA_DIR", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data")))
 
 @router.get("/config")
-def get_config(file: str = "config.yaml"):
-    config_path = os.path.join(DATA_DIR, file)
-    if os.path.exists(config_path) and file.endswith(".yaml"):
+def get_config(folder: str):
+    config_path = os.path.join(DATA_DIR, folder, "config.yaml")
+    if os.path.exists(config_path):
         with open(config_path, 'r', encoding='utf-8') as f:
             return yaml.safe_load(f)
     return {}
@@ -51,11 +51,22 @@ def get_files():
     if os.path.isdir(students_dir):
         students = [os.path.basename(f) for f in glob.glob(os.path.join(students_dir, "*.xls*"))]
         
-    configs = [os.path.basename(f) for f in glob.glob(os.path.join(DATA_DIR, "*.yaml"))]
-    jsons = [os.path.basename(f) for f in glob.glob(os.path.join(DATA_DIR, "*.json"))]
-    pdfs = [os.path.basename(f) for f in glob.glob(os.path.join(DATA_DIR, "*.pdf"))]
+    working_dirs = []
+    jsons_by_dir = {}
+    configs_by_dir = {}
+    if os.path.exists(DATA_DIR):
+        for item in os.listdir(DATA_DIR):
+            item_path = os.path.join(DATA_DIR, item)
+            if os.path.isdir(item_path) and item not in ["questions", "students", "backup", "configs", "scans", "sorted", "corrected"]:
+                jsons = [os.path.basename(f) for f in glob.glob(os.path.join(item_path, "*.json"))]
+                yamls = [os.path.basename(f) for f in glob.glob(os.path.join(item_path, "*.yaml"))]
+                if jsons or yamls:
+                    working_dirs.append(item)
+                    jsons_by_dir[item] = jsons
+                    if yamls:
+                        configs_by_dir[item] = yamls
         
-    return {"questions": questions, "students": students, "configs": configs, "jsons": jsons, "pdfs": pdfs}
+    return {"questions": questions, "students": students, "working_dirs": working_dirs, "jsons_by_dir": jsons_by_dir, "configs_by_dir": configs_by_dir}
 
 @router.post("/upload/question")
 async def upload_question(file: UploadFile = File(...)):
@@ -136,13 +147,30 @@ def run_generate_task(task_id: str, req: GenerateRequest):
         config_dict = req.config.model_dump(by_alias=True, exclude_none=True)
         config_dict['basedir'] = DATA_DIR
 
+        import re
+        exam_name = req.config.exam.name or "Esame_Generato"
+        safe_name = re.sub(r'[<>:"/\\|?*]', '', exam_name).strip()
+        working_dir = os.path.join(DATA_DIR, safe_name)
+        
+        if req.clean_working_dir and os.path.exists(working_dir):
+            import shutil
+            for filename in os.listdir(working_dir):
+                file_path = os.path.join(working_dir, filename)
+                try:
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                except Exception as e:
+                    pass
+                    
+        os.makedirs(working_dir, exist_ok=True)
+        
+        # Create scans/ subdirectory immediately
+        os.makedirs(os.path.join(working_dir, "scans"), exist_ok=True)
+
         if req.save_config:
-            filename = req.config_output_name
-            if not filename:
-                filename = f"{req.output_prefix}_config.yaml"
-            if not filename.endswith('.yaml'):
-                filename += '.yaml'
-            config_path = os.path.join(DATA_DIR, filename)
+            config_path = os.path.join(working_dir, "config.yaml")
             with open(config_path, 'w', encoding='utf-8') as f:
                 yaml.dump(config_dict, f, allow_unicode=True)
 
@@ -210,7 +238,7 @@ def run_generate_task(task_id: str, req: GenerateRequest):
         generator = Generate(
             config=config_dict,
             questions=questions_dir,
-            output_prefix=os.path.join(DATA_DIR, req.output_prefix),
+            output_prefix=os.path.join(working_dir, req.output_prefix),
             students=student_list,
             exam_date=exam_date,
             seed=req.seed,
@@ -224,7 +252,7 @@ def run_generate_task(task_id: str, req: GenerateRequest):
         generator.process()
         
         from services.backup import backup_exam_json
-        backup_exam_json(os.path.join(DATA_DIR, f"{req.output_prefix}.json"))
+        backup_exam_json(os.path.join(working_dir, f"{req.output_prefix}.json"))
         
         task_manager.complete_task(task_id)
 
@@ -235,10 +263,13 @@ def run_generate_task(task_id: str, req: GenerateRequest):
 
 @router.post("/start")
 def start_generation(req: GenerateRequest, background_tasks: BackgroundTasks):
+    import re
+    exam_name = req.config.exam.name or "Esame_Generato"
+    safe_name = re.sub(r'[<>:"/\\|?*]', '', exam_name).strip()
+    
     task_id = task_manager.create_task()
     background_tasks.add_task(run_generate_task, task_id, req)
-    return {"task_id": task_id, "data_dir": DATA_DIR}
-
+    return {"task_id": task_id, "data_dir": DATA_DIR, "working_dir": safe_name}
 @router.post("/test-layout")
 async def test_layout(req: GenerateRequest):
     import asyncio
@@ -247,7 +278,9 @@ async def test_layout(req: GenerateRequest):
         config_dict['basedir'] = DATA_DIR
         questions_dir = os.path.join(DATA_DIR, "questions")
         
-        output_prefix = os.path.join(DATA_DIR, req.output_prefix)
+        tmp_dir = os.path.join(DATA_DIR, "tmp")
+        os.makedirs(tmp_dir, exist_ok=True)
+        output_prefix = os.path.join(tmp_dir, req.output_prefix)
         
         def run_test():
             generator = Generate(
@@ -263,7 +296,7 @@ async def test_layout(req: GenerateRequest):
         # Return a cache-busting timestamp to avoid caching issues with the PDF
         import time
         timestamp = int(time.time())
-        return {"pdf_url": f"/api/data/{req.output_prefix}.pdf?t={timestamp}"}
+        return {"pdf_url": f"/api/data/tmp/{req.output_prefix}.pdf?t={timestamp}"}
     except Exception as e:
         import traceback
         traceback.print_exc()

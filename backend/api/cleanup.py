@@ -13,7 +13,7 @@ class DeleteRequest(BaseModel):
     files: List[str]
 
 @router.get("/files")
-def get_files():
+def get_files(working_dir: str = None):
     data = {
         "generated_pdfs": [],
         "generated_jsons": [],
@@ -26,28 +26,32 @@ def get_files():
         "questions": []
     }
 
+    work_dir = os.path.join(DATA_DIR, working_dir) if working_dir else DATA_DIR
+    if not os.path.exists(work_dir):
+        return data
+
     # Generated PDFs: only .pdf directly in DATA_DIR
-    for f in glob.glob(os.path.join(DATA_DIR, "*.pdf")):
+    for f in glob.glob(os.path.join(work_dir, "*.pdf")):
         data["generated_pdfs"].append(os.path.relpath(f, DATA_DIR))
         
     # Generated JSONs: only .json directly in DATA_DIR
-    for f in glob.glob(os.path.join(DATA_DIR, "*.json")):
+    for f in glob.glob(os.path.join(work_dir, "*.json")):
         data["generated_jsons"].append(os.path.relpath(f, DATA_DIR))
         
     # Scans: all .pdf in DATA_DIR/scans/
-    scans_dir = os.path.join(DATA_DIR, "scans")
+    scans_dir = os.path.join(work_dir, "scans")
     if os.path.exists(scans_dir):
         for f in glob.glob(os.path.join(scans_dir, "*.pdf")):
             data["scans"].append(os.path.relpath(f, DATA_DIR))
 
     # Sorted: all .png in DATA_DIR/sorted/
-    sorted_dir = os.path.join(DATA_DIR, "sorted")
+    sorted_dir = os.path.join(work_dir, "sorted")
     if os.path.exists(sorted_dir):
         for f in glob.glob(os.path.join(sorted_dir, "*.png")):
             data["sorted"].append(os.path.relpath(f, DATA_DIR))
 
     # Corrected: all .pdf in DATA_DIR/corrected/ and .json in DATA_DIR/corrected/sidecar/
-    corrected_dir = os.path.join(DATA_DIR, "corrected")
+    corrected_dir = os.path.join(work_dir, "corrected")
     if os.path.exists(corrected_dir):
         for f in glob.glob(os.path.join(corrected_dir, "*.pdf")):
             data["corrected"].append(os.path.relpath(f, DATA_DIR))
@@ -57,15 +61,15 @@ def get_files():
                 data["corrected"].append(os.path.relpath(f, DATA_DIR))
 
     # Reports: .xlsx and .md in DATA_DIR
-    for f in glob.glob(os.path.join(DATA_DIR, "*.xlsx")):
+    for f in glob.glob(os.path.join(work_dir, "*.xlsx")):
         data["reports"].append(os.path.relpath(f, DATA_DIR))
-    for f in glob.glob(os.path.join(DATA_DIR, "*.md")):
+    for f in glob.glob(os.path.join(work_dir, "*.md")):
         data["reports"].append(os.path.relpath(f, DATA_DIR))
 
     # Config: .yaml in DATA_DIR
-    for f in glob.glob(os.path.join(DATA_DIR, "*.yaml")):
+    for f in glob.glob(os.path.join(work_dir, "*.yaml")):
         data["config"].append(os.path.relpath(f, DATA_DIR))
-    for f in glob.glob(os.path.join(DATA_DIR, "*.yml")):
+    for f in glob.glob(os.path.join(work_dir, "*.yml")):
         data["config"].append(os.path.relpath(f, DATA_DIR))
 
     # Students: .xls* in DATA_DIR/students/

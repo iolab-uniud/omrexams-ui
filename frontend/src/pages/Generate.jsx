@@ -125,11 +125,12 @@ export default function Generate() {
     dyslexia_count: ''
   });
 
-  const [availableFiles, setAvailableFiles] = useState({ questions: [], students: [], configs: [], jsons: [] });
+  const [availableFiles, setAvailableFiles] = useState({ questions: [], students: [], working_dirs: [], jsons_by_dir: {}, configs_by_dir: {} });
   const [taskId, setTaskId] = useState(null);
   const [progress, setProgress] = useState(null);
   const [error, setError] = useState(null);
   const [dataDir, setDataDir] = useState('');
+  const [workingDir, setWorkingDir] = useState('');
   const [selectedConfig, setSelectedConfig] = useState('');
   
   const [isTestLoading, setIsTestLoading] = useState(false);
@@ -167,8 +168,8 @@ export default function Generate() {
     try {
       const files = await generateAPI.getFiles();
       setAvailableFiles(files);
-      if (files.configs && files.configs.length > 0) {
-        setSelectedConfig(files.configs[0]);
+      if (files.configs_by_dir && Object.keys(files.configs_by_dir).length > 0) {
+        setSelectedConfig(Object.keys(files.configs_by_dir)[0]);
       }
     } catch (e) {
       console.error(e);
@@ -255,59 +256,50 @@ export default function Generate() {
   };
 
   const handleStart = async () => {
+    const safeName = (config.exam.name || "Esame_Generato").replace(/[<>:"/\|?*]/g, '').trim() || "Esame_Generato";
     let currentPrefix = runtime.output_prefix;
-    while (availableFiles.jsons && availableFiles.jsons.includes(`${currentPrefix}.json`)) {
-      const userChoice = await prompt(`Il file JSON "${currentPrefix}.json" esiste già.\nInserisci un nuovo prefisso per creare un nuovo file, oppure lascia questo per sovrascriverlo (Annulla per fermare):`, currentPrefix);
-      if (userChoice === null) {
-        return;
+    let cleanWorkingDir = false;
+
+    if (availableFiles.working_dirs && availableFiles.working_dirs.includes(safeName)) {
+      const userChoice = await prompt(
+        `La cartella di lavoro "${safeName}" esiste già.
+Puoi decidere di svuotare la cartella esistente e popolarla con i nuovi file, aggiungere i nuovi file alla cartella esistente oppure cambiare nome dell'esame e creare così una nuova cartella`,
+        "",
+        [
+          { label: "Svuota cartella", value: "overwrite", className: "bg-red-600 text-white hover:bg-red-700" },
+          { label: "Aggiungi file alla cartella", value: "append", className: "bg-green-600 text-white hover:bg-green-700" },
+          { label: "Annulla (Cambia nome)", value: "cancel", className: "bg-gray-300 text-gray-800 hover:bg-gray-400" }
+        ],
+        true
+      );
+
+      if (!userChoice || userChoice.action === "cancel") {
+        return; // Stop generation
       }
-      if (userChoice === currentPrefix) {
-        break;
+
+      if (userChoice.action === "overwrite") {
+        cleanWorkingDir = true;
+      } else if (userChoice.action === "append") {
+        const jsonsInDir = availableFiles.jsons_by_dir?.[safeName] || [];
+        while (jsonsInDir.includes(`${currentPrefix}.json`)) {
+          const prefixChoice = await prompt(
+            `Il prefisso "${currentPrefix}" esiste già nella cartella.
+Inserisci un nuovo prefisso per i file:`,
+            currentPrefix
+          );
+          if (prefixChoice === null) return;
+          currentPrefix = prefixChoice;
+        }
       }
-      currentPrefix = userChoice;
     }
-    
+
     if (currentPrefix !== runtime.output_prefix) {
       setRuntime(prev => ({ ...prev, output_prefix: currentPrefix }));
     }
 
-    let currentConfigName = runtime.config_output_name;
-    if (runtime.save_config && currentConfigName) {
-      let checkName = currentConfigName;
-      if (!checkName.endsWith('.yaml') && !checkName.endsWith('.yml')) {
-        checkName += '.yaml';
-      }
-      
-      while (availableFiles.configs && availableFiles.configs.includes(checkName)) {
-        let defaultSuggest = currentConfigName;
-        if (defaultSuggest.endsWith('.yaml')) defaultSuggest = defaultSuggest.slice(0, -5);
-        else if (defaultSuggest.endsWith('.yml')) defaultSuggest = defaultSuggest.slice(0, -4);
-        
-        const userChoice = await prompt(`Il file di configurazione "${checkName}" esiste già nella cartella data/.\nInserisci un nuovo nome per creare un nuovo file, oppure lascia questo per sovrascriverlo (Annulla per fermare):`, defaultSuggest);
-        if (userChoice === null) {
-          return;
-        }
-        
-        let choiceWithExt = userChoice;
-        if (!choiceWithExt.endsWith('.yaml') && !choiceWithExt.endsWith('.yml')) {
-          choiceWithExt += '.yaml';
-        }
-        
-        if (choiceWithExt === checkName) {
-          break;
-        }
-        
-        currentConfigName = userChoice;
-        checkName = choiceWithExt;
-      }
-      
-      if (currentConfigName !== runtime.config_output_name) {
-        setRuntime(prev => ({ ...prev, config_output_name: currentConfigName }));
-      }
-    }
-
     setError(null);
     setProgress(null);
+
     
     const getPayloadConfig = () => {
       // Create a deep copy to avoid mutating React state
@@ -334,7 +326,7 @@ export default function Generate() {
     const reqData = {
       config: payloadConfig,
       save_config: runtime.save_config,
-      config_output_name: currentConfigName,
+      config_output_name: runtime.config_output_name,
       date: runtime.date,
       is_anonymous: runtime.is_anonymous,
       num_anonymous_exams: runtime.is_anonymous ? parseInt(runtime.num_anonymous_exams, 10) : undefined,
@@ -344,13 +336,15 @@ export default function Generate() {
       seed: parseInt(runtime.seed, 10),
       folded: runtime.folded,
       rotated: runtime.rotated,
-      dyslexia_count: runtime.dyslexia_count ? parseInt(runtime.dyslexia_count, 10) : undefined
+      dyslexia_count: runtime.dyslexia_count ? parseInt(runtime.dyslexia_count, 10) : undefined,
+      clean_working_dir: cleanWorkingDir
     };
 
     try {
       const res = await generateAPI.startGeneration(reqData);
       setTaskId(res.task_id);
       setDataDir(res.data_dir);
+      setWorkingDir(res.working_dir);
     } catch (e) {
       let errorMsg = e.message;
       if (e.response?.data?.detail) {
@@ -448,10 +442,10 @@ export default function Generate() {
                 className="bg-white/80 backdrop-blur px-3 py-2 rounded-lg shadow-sm border border-gray-200 text-sm focus:outline-none focus:border-blue-400"
                 value={selectedConfig}
                 onChange={e => setSelectedConfig(e.target.value)}
-                disabled={!availableFiles.configs || availableFiles.configs.length === 0}
+                disabled={!availableFiles.working_dirs || availableFiles.working_dirs.length === 0}
               >
-                {availableFiles.configs && availableFiles.configs.length > 0 ? (
-                  availableFiles.configs.map(c => <option key={c} value={c}>{c}</option>)
+                {availableFiles.working_dirs && availableFiles.working_dirs.length > 0 ? (
+                  availableFiles.working_dirs.map(c => <option key={c} value={c}>{c}</option>)
                 ) : (
                   <option value="">Nessuna configurazione presente</option>
                 )}
@@ -926,7 +920,7 @@ export default function Generate() {
                 </p>
                 
                 {/* PDF Preview */}
-                <PDFPreview url={`/api/data/${runtime.output_prefix}.pdf`} />
+                <PDFPreview url={`/api/data/${workingDir}/${runtime.output_prefix}.pdf`} />
                 
                 {/* Return Dashboard */}
                 <div className="mt-6 flex justify-center">

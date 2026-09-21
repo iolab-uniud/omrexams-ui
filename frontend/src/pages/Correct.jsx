@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CheckCircle, ScanText } from 'lucide-react';
-import { sortAPI, correctAPI } from '../api/client';
+import { sortAPI, correctAPI, generateAPI } from '../api/client';
 import { useNavigate } from 'react-router-dom';
 import BackButton from '../components/BackButton';
 import HomeButton from '../components/HomeButton';
@@ -16,7 +16,7 @@ function Correct() {
   const [status, setStatus] = useState({
     has_scans: false,
     scans_count: 0,
-    data_files: [],
+    working_dirs: [],
     scans_files: [],
     sorted_png_count: 0,
     has_datafile: false,
@@ -29,7 +29,7 @@ function Correct() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
   const [sortConfig, setSortConfig] = useState({
-    datafile: '',
+    working_dir: '',
     paper: 'A4'
   });
   const [sorting, setSorting] = useState(false);
@@ -40,7 +40,7 @@ function Correct() {
 
   // --- CORRECT STATES ---
   const [correctConfig, setCorrectConfig] = useState({
-    datafile: '',
+    working_dir: '',
     produce_pdf: false,
     pdf_filename: 'esami_corretti.pdf'
   });
@@ -52,22 +52,47 @@ function Correct() {
   const [manualChecks, setManualChecks] = useState(0);
 
   // --- LOAD STATUS ---
-  const loadStatus = async () => {
+  const loadStatus = async (swd = sortConfig.working_dir, cwd = correctConfig.working_dir) => {
     try {
       setLoading(true);
-      // Fetch status from both APIs
-      const sortData = await sortAPI.getStatus();
-      const correctData = await correctAPI.getStatus();
       
-      const combinedStatus = { ...sortData, ...correctData };
-      setStatus(combinedStatus);
+      const generateData = await generateAPI.getFiles();
+      const working_dirs = generateData.working_dirs || [];
+      
+      const sortData = swd ? await sortAPI.getStatus(swd) : {};
+      const correctData = cwd ? await correctAPI.getStatus(cwd) : {};
+      
+      const combinedStatus = { 
+          ...sortData, 
+          ...correctData,
+          working_dirs
+      };
+      
+      // Merge specifically because we don't want to lose working_dirs from generateData if sortData/correctData is empty
+      setStatus(prev => ({
+          ...prev,
+          ...combinedStatus,
+          has_scans: sortData.has_scans || false,
+          scans_count: sortData.scans_count || 0,
+          scans_files: sortData.scans_files || [],
+          sorted_png_count: sortData.sorted_png_count || 0,
+          has_datafile: correctData.has_datafile || false,
+          has_sorted_scans: correctData.has_sorted_scans || false,
+          pdf_files: correctData.pdf_files || []
+      }));
 
-      if (combinedStatus.data_files && combinedStatus.data_files.length > 0) {
-        if (!sortConfig.datafile) {
-          setSortConfig(prev => ({ ...prev, datafile: combinedStatus.data_files[0] }));
+      if (working_dirs.length > 0) {
+        let needsReload = false;
+        if (!swd) {
+          setSortConfig(prev => ({ ...prev, working_dir: working_dirs[0] }));
+          needsReload = true;
         }
-        if (!correctConfig.datafile) {
-          setCorrectConfig(prev => ({ ...prev, datafile: combinedStatus.data_files[0] }));
+        if (!cwd) {
+          setCorrectConfig(prev => ({ ...prev, working_dir: working_dirs[0] }));
+          needsReload = true;
+        }
+        if (needsReload) {
+           // Wait for next effect to trigger loadStatus with the new values
         }
       }
       if (sortData.scans_files) {
@@ -88,6 +113,12 @@ function Correct() {
     loadStatus();
   }, []);
 
+  useEffect(() => {
+    if (sortConfig.working_dir || correctConfig.working_dir) {
+      loadStatus(sortConfig.working_dir, correctConfig.working_dir);
+    }
+  }, [sortConfig.working_dir, correctConfig.working_dir]);
+
   // --- SORT LOGIC ---
   const handleFileUpload = async (e) => {
     const files = e.target.files;
@@ -96,7 +127,7 @@ function Correct() {
     try {
       setUploading(true);
       for (let i = 0; i < files.length; i++) {
-        await sortAPI.uploadScan(files[i]);
+        await sortAPI.uploadScan(files[i], sortConfig.working_dir);
       }
       await loadStatus();
     } catch (err) {
@@ -109,8 +140,8 @@ function Correct() {
   };
 
   const startSort = async () => {
-    if (!sortConfig.datafile) {
-      setSortError('Seleziona un file dati json valido.');
+    if (!sortConfig.working_dir) {
+      setSortError('Seleziona una cartella di lavoro valida.');
       return;
     }
     if (selectedScans.length === 0) {
@@ -195,8 +226,8 @@ function Correct() {
 
   // --- CORRECT LOGIC ---
   const startCorrection = async () => {
-    if (!correctConfig.datafile) {
-      setCorrectError('Seleziona un file dati json valido.');
+    if (!correctConfig.working_dir) {
+      setCorrectError('Seleziona una cartella di lavoro valida.');
       return;
     }
     
@@ -307,106 +338,106 @@ function Correct() {
             </div>
           )}
 
-          {/* STATUS & SECTION UPLOAD */}
+          {/* SECTION WORKING DIR SELECTION */}
           <section className="group bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-purple-400 hover:shadow-md transition-all flex flex-col mb-6">
-            <h3 className="text-xl font-semibold mb-4 text-gray-700 border-b pb-2">Stato scansioni</h3>
-            <div className="flex items-center gap-4 mb-4">
-              <div className={`w-4 h-4 rounded-full ${status.has_scans ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              <span className="text-gray-700 font-medium">
-                {status.has_scans 
-                  ? `${status.scans_count} file di scansioni presenti nella cartella data/scans/. Seleziona quali elaborare:` 
-                  : 'Nessun file di scansioni presente in data/scans/. Scansiona gli esami svolti e carica il file pdf con il pulsante sottostante'}
-              </span>
-            </div>
-            
-            {status.has_scans && (
-              <div className="mb-4 pl-8">
-                {status.scans_files && status.scans_files.map(file => (
-                  <label key={file} className="flex items-center gap-2 mb-2 cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" 
-                      checked={selectedScans.includes(file)}
-                      onChange={(e) => {
-                        if (e.target.checked) setSelectedScans([...selectedScans, file]);
-                        else setSelectedScans(selectedScans.filter(f => f !== file));
-                      }}
-                    />
-                    <span className="text-gray-600">{file}</span>
-                  </label>
-                ))}
-                <div className="flex gap-4 mt-3">
-                  <button 
-                    onClick={() => setSelectedScans(status.scans_files)}
-                    className="text-sm text-purple-600 hover:underline"
-                  >Seleziona tutti</button>
-                  <button 
-                    onClick={() => setSelectedScans([])}
-                    className="text-sm text-purple-600 hover:underline"
-                  >Deseleziona tutti</button>
-                </div>
+            <h3 className="text-xl font-semibold mb-4 text-gray-700 border-b pb-2 flex items-center">
+              Impostazioni smistamento
+              <HelpButton title="Come funziona lo smistamento">
+                <p className="mb-3">Avverrà lo smistamento degli esami caricati.</p>
+                <p className="mb-3">Il sistema si occuperà di separare i singoli esami e convertirli in immagini PNG, che verranno salvate all'interno della cartella <span className="bg-gray-100 px-1.5 py-0.5 rounded text-grey-600 font-medium">data/&#123;Cartella&#125;/sorted/</span>.</p>
+                <p>Questa separazione dei fogli è una fase preliminare necessaria per poter successivamente avviare la correzione automatica degli esami nella Fase 2.</p>
+              </HelpButton>
+            </h3>
+          
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cartella di lavoro</label>
+                <select 
+                  className="w-full border border-gray-300 p-2 rounded focus:ring-2 focus:ring-purple-500"
+                  value={sortConfig.working_dir}
+                  onChange={(e) => setSortConfig({...sortConfig, working_dir: e.target.value})}
+                  disabled={sorting}
+                >
+                  <option value="">Seleziona...</option>
+                  {status.working_dirs && status.working_dirs.map((file, idx) => (
+                    <option key={idx} value={file}>{file}</option>
+                  ))}
+                </select>
               </div>
-            )}
-            
-            <div className="flex items-center gap-4 mt-2">
-              <input 
-                type="file" 
-                accept=".pdf"
-                multiple
-                className="hidden" 
-                ref={fileInputRef} 
-                onChange={handleFileUpload} 
-              />
-              <button 
-                onClick={() => fileInputRef.current.click()}
-                disabled={uploading || sorting}
-                className="px-4 py-2 bg-purple-100 text-purple-700 rounded font-medium hover:bg-purple-200 disabled:opacity-50 transition-colors"
-              >
-                {uploading ? 'Caricamento in corso...' : 'Carica nuovo file PDF'}
-              </button>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Formato carta</label>
+                <select 
+                  className="w-full border border-gray-300 p-2 rounded focus:ring-2 focus:ring-purple-500"
+                  value={sortConfig.paper}
+                  onChange={(e) => setSortConfig({...sortConfig, paper: e.target.value})}
+                  disabled={sorting}
+                >
+                  <option value="A4">A4</option>
+                  <option value="A3">A3</option>
+                </select>
+              </div>
             </div>
           </section>
 
-          {/* SECTION SETTINGS */}
-          {status.has_scans && (
-            <section className="group bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-purple-400 hover:shadow-md transition-all flex flex-col">
-              <h3 className="text-xl font-semibold mb-4 text-gray-700 border-b pb-2 flex items-center">
-                Impostazioni smistamento
-                <HelpButton title="Come funziona lo smistamento">
-                  <p className="mb-3">Avverrà lo smistamento degli esami caricati.</p>
-                  <p className="mb-3">Il sistema si occuperà di separare i singoli esami e convertirli in immagini PNG, che verranno salvate all'interno della cartella <span className="bg-gray-100 px-1.5 py-0.5 rounded text-grey-600 font-medium">data/sorted/</span>.</p>
-                  <p>Questa separazione dei fogli è una fase preliminare necessaria per poter successivamente avviare la correzione automatica degli esami nella Fase 2.</p>
-                </HelpButton>
-              </h3>
-            
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Datafile degli esami (JSON)</label>
-                  <select 
-                    className="w-full border border-gray-300 p-2 rounded focus:ring-2 focus:ring-purple-500"
-                    value={sortConfig.datafile}
-                    onChange={(e) => setSortConfig({...sortConfig, datafile: e.target.value})}
-                    disabled={sorting}
-                  >
-                    <option value="">Seleziona...</option>
-                    {status.data_files && status.data_files.map((file, idx) => (
-                      <option key={idx} value={file}>{file}</option>
-                    ))}
-                  </select>
+          {/* STATUS & SECTION UPLOAD */}
+          {sortConfig.working_dir && (
+            <section className="group bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-purple-400 hover:shadow-md transition-all flex flex-col mb-6">
+              <h3 className="text-xl font-semibold mb-4 text-gray-700 border-b pb-2">Stato scansioni</h3>
+              <div className="flex items-center gap-4 mb-4">
+                <div className={`w-4 h-4 rounded-full ${status.has_scans ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span className="text-gray-700 font-medium">
+                  {status.has_scans 
+                    ? `${status.scans_count} file di scansioni presenti nella cartella data/${sortConfig.working_dir}/scans/. Seleziona quali elaborare:` 
+                    : `Nessun file di scansioni presente in data/${sortConfig.working_dir}/scans/. Scansiona gli esami svolti e carica il file pdf con il pulsante sottostante`}
+                </span>
+              </div>
+              
+              {status.has_scans && (
+                <div className="mb-4 pl-8">
+                  {status.scans_files && status.scans_files.map(file => (
+                    <label key={file} className="flex items-center gap-2 mb-2 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500" 
+                        checked={selectedScans.includes(file)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedScans([...selectedScans, file]);
+                          else setSelectedScans(selectedScans.filter(f => f !== file));
+                        }}
+                      />
+                      <span className="text-gray-600">{file}</span>
+                    </label>
+                  ))}
+                  <div className="flex gap-4 mt-3">
+                    <button 
+                      onClick={() => setSelectedScans(status.scans_files)}
+                      className="text-sm text-purple-600 hover:underline"
+                    >Seleziona tutti</button>
+                    <button 
+                      onClick={() => setSelectedScans([])}
+                      className="text-sm text-purple-600 hover:underline"
+                    >Deseleziona tutti</button>
+                  </div>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Formato carta</label>
-                  <select 
-                    className="w-full border border-gray-300 p-2 rounded focus:ring-2 focus:ring-purple-500"
-                    value={sortConfig.paper}
-                    onChange={(e) => setSortConfig({...sortConfig, paper: e.target.value})}
-                    disabled={sorting}
-                  >
-                    <option value="A4">A4</option>
-                    <option value="A3">A3</option>
-                  </select>
-                </div>
+              )}
+              
+              <div className="flex items-center gap-4 mt-2">
+                <input 
+                  type="file" 
+                  accept=".pdf"
+                  multiple
+                  className="hidden" 
+                  ref={fileInputRef} 
+                  onChange={handleFileUpload} 
+                />
+                <button 
+                  onClick={() => fileInputRef.current.click()}
+                  disabled={uploading || sorting}
+                  className="px-4 py-2 bg-purple-100 text-purple-700 rounded font-medium hover:bg-purple-200 disabled:opacity-50 transition-colors"
+                >
+                  {uploading ? 'Caricamento in corso...' : 'Carica nuovo file PDF'}
+                </button>
               </div>
             </section>
           )}
@@ -416,7 +447,7 @@ function Correct() {
             {!sorting && (
               <button
                 onClick={startSort}
-                disabled={!status.has_scans || !sortConfig.datafile || selectedScans.length === 0}
+                disabled={!status.has_scans || !sortConfig.working_dir || selectedScans.length === 0}
                 className="px-8 py-3 bg-purple-600 text-white rounded-lg font-semibold shadow hover:bg-purple-700 focus:ring-4 focus:ring-purple-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Avvia smistamento scansioni
@@ -438,9 +469,19 @@ function Correct() {
             )}
 
             {sortSuccess && (
-              <div className="mt-6 text-center bg-green-50 text-green-700 p-4 rounded-lg border border-green-200 w-full shadow-sm">
+              <div className="mt-6 text-center bg-green-50 text-green-800 p-5 rounded-lg border border-green-200 w-full shadow-sm">
                 <p className="font-medium whitespace-pre-line text-left">{sortSuccess}</p>
-                <p className="text-sm mt-1">Puoi ora procedere con la Fase 2.</p>
+                <div className="mt-4 flex flex-col md:flex-row items-center justify-between gap-4 border-t border-green-200 pt-4">
+                  <p className="text-sm font-semibold">
+                    Puoi ora procedere con la Fase 2, oppure associare eventuali esami anonimi a determinati studenti.
+                  </p>
+                  <button
+                    onClick={() => navigate('/associate')}
+                    className="px-4 py-2 bg-purple-600 text-white border border-green-300 rounded shadow-sm hover:bg-purple-700 font-bold transition-colors whitespace-nowrap"
+                  >
+                    Associa esami anonimi
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -475,8 +516,8 @@ function Correct() {
                 <div className={`w-4 h-4 rounded-full ${status.has_datafile ? 'bg-green-500' : 'bg-red-500'}`}></div>
                 <span className="text-gray-700 font-medium">
                   {status.has_datafile 
-                    ? `Datafile JSON presenti nella cartella data/` 
-                    : 'Nessun datafile JSON presente. Genera prima gli esami.'}
+                    ? `Cartelle di lavoro presenti` 
+                    : 'Nessuna cartella di lavoro presente. Genera prima gli esami.'}
                 </span>
               </div>
               
@@ -484,7 +525,7 @@ function Correct() {
                 <div className={`w-4 h-4 rounded-full ${status.has_sorted_scans ? 'bg-green-500' : 'bg-red-500'}`}></div>
                 <span className="text-gray-700 font-medium">
                   {status.has_sorted_scans 
-                    ? 'Esami scannerizzati e smistati presenti in data/sorted/' 
+                    ? 'Esami scannerizzati e smistati' 
                     : 'Esami non ancora smistati (completa la Fase 1).'}
                 </span>
               </div>
@@ -499,7 +540,7 @@ function Correct() {
                   Impostazioni correzione
                   <HelpButton title="Fase di correzione ottica">
                     <p className="mb-3">In questa fase il sistema analizza otticamente gli esami smistati per tutti gli studenti.</p>
-                    <p className="mb-3">Il datafile degli esami (JSON) selezionato verrà ampliato aggiungendo i dati reali appena acquisiti, ovvero calcolando esattamente quali risposte sono state date, omesse o sbagliate da ciascuno studente, in modo da procedere successivamente alla fase di assegnazione dei voti.</p>
+                    <p className="mb-3">Il Cartella di lavoro selezionato verrà ampliato aggiungendo i dati reali appena acquisiti, ovvero calcolando esattamente quali risposte sono state date, omesse o sbagliate da ciascuno studente, in modo da procedere successivamente alla fase di assegnazione dei voti.</p>
                     <div className="bg-emerald-50 border border-emerald-100 p-3 rounded mt-4">
                       <p className="text-sm text-emerald-800">Selezionando l'apposita spunta, il sistema genererà un file PDF visivo di riepilogo (nella cartella data/corrected) che mostra graficamente i segni rilevati e le correzioni.</p>
                     </div>
@@ -508,15 +549,15 @@ function Correct() {
             
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Seleziona datafile degli esami (JSON)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Seleziona Cartella di lavoro</label>
                     <select 
                       className="w-full border border-gray-300 p-2 rounded focus:ring-2 focus:ring-emerald-500"
-                      value={correctConfig.datafile}
-                      onChange={(e) => setCorrectConfig({...correctConfig, datafile: e.target.value})}
+                      value={correctConfig.working_dir}
+                      onChange={(e) => setCorrectConfig({...correctConfig, working_dir: e.target.value})}
                       disabled={correcting}
                     >
                       <option value="">Seleziona...</option>
-                      {status.data_files && status.data_files.map((file, idx) => (
+                      {status.working_dirs && status.working_dirs.map((file, idx) => (
                         <option key={idx} value={file}>{file}</option>
                       ))}
                     </select>
@@ -557,7 +598,7 @@ function Correct() {
               {!correcting && (
                 <button
                   onClick={startCorrection}
-                  disabled={!isFase2Ready || !correctConfig.datafile}
+                  disabled={!isFase2Ready || !correctConfig.working_dir}
                   className="px-8 py-3 bg-emerald-600 text-white rounded-lg font-semibold shadow hover:bg-emerald-700 focus:ring-4 focus:ring-emerald-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Avvia correzione automatica

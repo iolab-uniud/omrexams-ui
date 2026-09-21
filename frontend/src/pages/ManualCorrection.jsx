@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ClipboardEdit } from 'lucide-react';
-import { manualAPI, correctAPI } from '../api/client';
+import { manualAPI, correctAPI, generateAPI } from '../api/client';
 import PDFPreview from '../components/PDFPreview';
 import CroppedPDFPreview from '../components/CroppedPDFPreview';
 import { useNavigate } from 'react-router-dom';
@@ -9,8 +9,8 @@ import HomeButton from '../components/HomeButton';
 import HelpButton from '../components/HelpButton';
 
 export default function ManualCorrection() {
-  const [dataFiles, setDataFiles] = useState([]);
-  const [datafile, setDatafile] = useState('');
+  const [workingDirs, setWorkingDirs] = useState([]);
+  const [workingDir, setWorkingDir] = useState('');
   
   const [mode, setMode] = useState(null); // 'scans' or 'missing'
   
@@ -46,8 +46,8 @@ export default function ManualCorrection() {
 
   const loadStatus = async () => {
     try {
-      const res = await correctAPI.getStatus();
-      setDataFiles(res.data_files || []);
+      const res = await generateAPI.getFiles();
+      setWorkingDirs(res.working_dirs || []);
     } catch (e) {
       console.error(e);
       setGlobalError("Errore nel caricamento dei dati di base");
@@ -56,7 +56,7 @@ export default function ManualCorrection() {
 
   const loadCorrected = async () => {
     try {
-      const res = await manualAPI.getCorrected();
+      const res = await manualAPI.getCorrected(workingDir);
       setCorrectedList(res.corrected || []);
       setMode('corrected');
       setCurrentStudentId('');
@@ -72,7 +72,7 @@ export default function ManualCorrection() {
 
   const loadCorrectedMapping = async (pdfName) => {
     try {
-      const res = await manualAPI.getCorrectedMapping(pdfName);
+      const res = await manualAPI.getCorrectedMapping(workingDir, pdfName);
       setCorrectedMapping(res.mapping || {});
       const students = Object.keys(res.mapping || {});
       if (students.length > 0) {
@@ -104,12 +104,12 @@ export default function ManualCorrection() {
   const loadMissing = async () => {
     setGlobalError('');
     setGlobalMessage('');
-    if (!datafile) {
-      setGlobalError("Seleziona prima un file JSON");
+    if (!workingDir) {
+      setGlobalError("Seleziona prima un Cartella di lavoro");
       return;
     }
     try {
-      const res = await manualAPI.getMissing(datafile);
+      const res = await manualAPI.getMissing(workingDir);
       setMissingList(res.missing || []);
       setMode('missing');
       setCurrentMissingIndex(0);
@@ -128,10 +128,10 @@ export default function ManualCorrection() {
   const handleStudentSelect = async (id) => {
     setPanelError('');
     setPanelMessage('');
-    if (!datafile || !id) return;
+    if (!workingDir || !id) return;
     setCurrentStudentId(id);
     try {
-      const res = await manualAPI.getStudentData(datafile, id);
+      const res = await manualAPI.getStudentData(workingDir, id);
       setStudentData(res);
     } catch (e) {
       setPanelError("Errore nel caricamento dei dati dello studente");
@@ -148,7 +148,7 @@ export default function ManualCorrection() {
     
     try {
       await manualAPI.forceAnswer({
-        datafile,
+        working_dir: workingDir,
         student_id: currentStudentId,
         question,
         given_answers
@@ -180,7 +180,7 @@ export default function ManualCorrection() {
         {/* DATAFILE SELECTION */}
         <section className="group bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-yellow-400 hover:shadow-md transition-all flex flex-col">
           <div className="flex items-center gap-2 mb-2">
-            <label className="font-semibold text-gray-700">Datafile degli esami (JSON) attivo:</label>
+            <label className="font-semibold text-gray-700">Cartella di lavoro attivo:</label>
             <HelpButton title="Revisione e verifica manuale">
               <div className="text-sm text-gray-700 space-y-3">
                 <p>
@@ -197,11 +197,11 @@ export default function ManualCorrection() {
           </div>
           <select 
             className="border border-gray-300 p-2 rounded focus:ring-2 focus:ring-orange-500 w-64"
-            value={datafile}
-            onChange={(e) => setDatafile(e.target.value)}
+            value={workingDir}
+            onChange={(e) => setWorkingDir(e.target.value)}
           >
             <option value="">Seleziona...</option>
-            {dataFiles.map(f => <option key={f} value={f}>{f}</option>)}
+            {workingDirs.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
         </section>
 
@@ -298,7 +298,7 @@ export default function ManualCorrection() {
                     </button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-4 bg-gray-100">
-                    <PDFPreview url={`/api/data/corrected/${selectedCorrected}`} />
+                    <PDFPreview url={`/api/data/${workingDir}/corrected/${selectedCorrected}`} />
                   </div>
                 </div>
               </div>
@@ -308,7 +308,7 @@ export default function ManualCorrection() {
               {selectedCorrected && selectedCorrectedStudent ? (
                 <div className="w-full overflow-x-auto bg-gray-50">
                   <CroppedPDFPreview 
-                    url={`/api/data/corrected/${encodeURIComponent(selectedCorrected)}`} 
+                    url={`/api/data/${workingDir}/corrected/${encodeURIComponent(selectedCorrected)}`} 
                       pages={correctedMapping[selectedCorrectedStudent]} 
                       showAlgorithms={showAlgorithms}
                     />
@@ -358,7 +358,7 @@ export default function ManualCorrection() {
               {missingList[currentMissingIndex].images.map(img => (
                 <img 
                   key={img} 
-                  src={`/api/data/sorted/${img}`} 
+                  src={`/api/data/${workingDir}/sorted/${img}`} 
                   alt="Exam Page" 
                   className="max-h-[600px] object-contain border bg-white shadow-sm"
                 />
@@ -378,7 +378,7 @@ export default function ManualCorrection() {
               <p className="mb-3">In questa sezione puoi visualizzare lo stato delle risposte rilevate otticamente per un preciso studente.</p>
               <p className="mb-3">Se noti un'imprecisione nel rilevamento, c'è la possibilità di modificare manualmente le singole risposte.</p>
               <div className="bg-yellow-50 border border-yellow-100 p-3 rounded mt-4">
-                <p className="text-sm text-yellow-800">Le modifiche manuali effettuate qui sovrascriveranno anche i dati rilevati dal sistema per quel determinato studente nel file JSON.</p>
+                <p className="text-sm text-yellow-800">Le modifiche manuali effettuate qui sovrascriveranno anche i dati rilevati dal sistema per quel determinato studente nel Cartella di lavoro.</p>
               </div>
             </HelpButton>
           </h2>
