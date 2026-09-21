@@ -3,6 +3,7 @@ import glob
 import yaml
 import shutil
 from datetime import datetime as dt
+from typing import List
 from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException
 from schemas.generate import GenerateRequest
 from pydantic import BaseModel
@@ -14,7 +15,6 @@ class QuestionSaveRequest(BaseModel):
     content: str
     append: bool = True
 
-from typing import List
 class UpdateCorrectedRequest(BaseModel):
     question_files: List[str]
     datafile: str
@@ -161,7 +161,7 @@ def run_generate_task(task_id: str, req: GenerateRequest):
                         os.unlink(file_path)
                     elif os.path.isdir(file_path):
                         shutil.rmtree(file_path)
-                except Exception as e:
+                except Exception:
                     pass
                     
         os.makedirs(working_dir, exist_ok=True)
@@ -212,9 +212,12 @@ def run_generate_task(task_id: str, req: GenerateRequest):
             id_col = str(fields.get('id', 'id')).lower().strip()
             
             missing_cols = []
-            if name_col not in df.columns: missing_cols.append(f"Nome ({name_col})")
-            if surname_col not in df.columns: missing_cols.append(f"Cognome ({surname_col})")
-            if id_col not in df.columns: missing_cols.append(f"Matricola ({id_col})")
+            if name_col not in df.columns:
+                missing_cols.append(f"Nome ({name_col})")
+            if surname_col not in df.columns:
+                missing_cols.append(f"Cognome ({surname_col})")
+            if id_col not in df.columns:
+                missing_cols.append(f"Matricola ({id_col})")
             
             if missing_cols:
                 raise Exception(f"Errore: Colonne non trovate nel file Excel: {', '.join(missing_cols)}. Colonne rilevate: {', '.join(df.columns)}")
@@ -232,7 +235,7 @@ def run_generate_task(task_id: str, req: GenerateRequest):
         
         try:
             exam_date = dt.strptime(req.date, "%Y-%m-%d")
-        except:
+        except ValueError:
             exam_date = dt.now()
 
         generator = Generate(

@@ -3,7 +3,6 @@ import glob
 from fastapi import APIRouter, HTTPException
 from tinydb import TinyDB, Query
 import pandas as pd
-import numpy as np
 from tabulate import tabulate
 
 from schemas.mark import CalculateRequest, ReportRequest
@@ -45,7 +44,7 @@ async def calculate_mark(req: CalculateRequest):
             marker.mark(marking_function=marking_func, include_missing=True)
         else:
             marker.mark(marking_function=custom_correction, include_missing=True)
-        return {"status": "success", "message": f"Calcolo dei voti completato", "file": req.outputfile, "path": work_dir}
+        return {"status": "success", "message": "Calcolo dei voti completato", "file": req.outputfile, "path": work_dir}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -69,7 +68,7 @@ async def generate_report(req: ReportRequest):
                 given_answers = list(map(set, exam['given_answers']))
                 question_size = list(map(lambda q: len(q[3]), e['questions']))
                 for i in range(len(correct_answers)):
-                    marked, correct, missing, wrong = given_answers[i], correct_answers[i] & given_answers[i], correct_answers[i] - given_answers[i], given_answers[i] - correct_answers[i]
+                    correct, missing, wrong = correct_answers[i] & given_answers[i], correct_answers[i] - given_answers[i], given_answers[i] - correct_answers[i]
                     df = pd.concat([df, pd.DataFrame([{ 'filename': e['questions'][i][0], 'question': e['questions'][i][1], 'correct_ratio': len(correct) / len(correct_answers[i]), 'missing_ratio': len(missing) / len(correct_answers[i]), 'wrong_ratio': len(wrong) / len(correct_answers[i]), 'options': question_size[i], 'no_correct_answers': len(correct_answers[i]) }])])                    
             if not df.empty:
                 df = df.groupby(['filename', 'question']).agg({ 'correct_ratio': ['count', 'sum', 'mean', 'std'], 'missing_ratio': ['mean', 'std'], 'wrong_ratio': ['mean', 'std'], 'options': 'min', 'no_correct_answers': 'min' })

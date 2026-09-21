@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Union
 
 class DataMarker(BaseModel):
     skip_until: Optional[str] = None
