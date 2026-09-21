@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 - 2026-09-21
+
+- Aggiunta la verifica automatica della qualità del codice Python (ruff) prima di ogni commit, per prevenire errori
+- Ottimizzata la creazione delle immagini Docker, che ora vengono generate in modo incrementale, e passaggio a uv per la gestione delle dipendenze Python, rendendo build e deploy più rapidi
+
+
 ## 0.4.0 - 2026-09-21
 
 - Introdotta l'organizzazione dei file generati (esami, correzioni, scansioni) in cartelle di lavoro separate e indipendenti per ogni sessione.
