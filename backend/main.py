@@ -11,7 +11,7 @@ import click
 click.prompt = lambda *args, **kwargs: kwargs.get('default', 'y')
 click.confirm = lambda *args, **kwargs: True
 
-from api import dashboard, generate, sse, sort, correct, manual, mark, moodle, backup, cleanup, associate
+from api import dashboard, generate, sse, sort, correct, manual, mark, moodle, backup, cleanup, associate  # noqa: E402
 
 app = FastAPI()
 

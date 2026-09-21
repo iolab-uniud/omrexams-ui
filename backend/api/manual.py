@@ -166,11 +166,10 @@ async def force_answer(req: ForceAnswerRequest):
             }
             
         try:
-            given = correction['given_answers'][req.question - 1]
             new_given = list(req.given_answers.upper())
             
             question_size = len(exam['questions'][req.question - 1][3])
-            new_given_order = [ord(l) - ord('A') for l in new_given]
+            new_given_order = [ord(answer) - ord('A') for answer in new_given]
             
             if any(o not in range(question_size) for o in new_given_order):
                 raise HTTPException(status_code=400, detail=f"La domanda ammette risposte da A a {chr(question_size - 1 + ord('A'))}")
@@ -211,7 +210,7 @@ async def force_answers(req: ForceAnswersRequest):
         for i, given_ans in enumerate(req.answers_list):
             new_given = list(given_ans.upper())
             question_size = len(exam['questions'][i][3])
-            new_given_order = [ord(l) - ord('A') for l in new_given]
+            new_given_order = [ord(answer) - ord('A') for answer in new_given]
             if any(o not in range(question_size) for o in new_given_order):
                 raise HTTPException(status_code=400, detail=f"La domanda {i+1} ammette risposte da A a {chr(question_size - 1 + ord('A'))}")
             correction['given_answers'][i] = new_given

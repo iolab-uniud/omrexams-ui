@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 import os
 import glob
-from tinydb import TinyDB, Query, where
+from tinydb import TinyDB, Query
 from schemas.associate import BulkAssociateRequest
 
 router = APIRouter()

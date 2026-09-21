@@ -54,6 +54,15 @@ uv pip install --no-deps -e ./omrexams
 
 Il sottocomando `uv pip` usa direttamente uv e mantiene il core separato dal manifest della UI, riducendo i conflitti quando il submodule viene aggiornato dal progetto originale.
 
+Per installare il controllo Ruff prima di ogni commit ed eseguirlo manualmente su tutto il repository:
+
+```sh
+uv run --project backend pre-commit install
+uv run --project backend pre-commit run --all-files
+```
+
+Il controllo analizza il codice Python del backend UI ed esclude `backend/omrexams`, che mantiene la configurazione del progetto upstream.
+
 ### Avvio dalle immagini Docker pubblicate
 
 Ogni release contrassegnata da un tag `v*` pubblica immagini multi-architettura per sistemi AMD64 e ARM64, incluse le macchine Mac con Apple Silicon. Il tag `latest` identifica la release più recente.

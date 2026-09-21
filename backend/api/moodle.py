@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 import os
 import glob
-from typing import List
 
 from schemas.moodle import MoodleExportRequest, MoodleImportRequest
 from omrexams.moodle_converter import MoodleConverter
@@ -102,7 +101,7 @@ async def import_from_moodle(req: MoodleImportRequest):
         
         return {
             "status": "success",
-            "message": f"Domande importate correttamente.",
+            "message": "Domande importate correttamente.",
             "file": os.path.basename(converter.file_name),
             "path": QUESTIONS_DIR
         }

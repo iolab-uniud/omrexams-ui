@@ -2,7 +2,6 @@ import os
 import glob
 import shutil
 from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException, Query
-from typing import List, Dict, Any
 from omrexams.sort import Sort
 from schemas.sort import SortRequest
 from api.sse import task_manager
@@ -33,7 +32,7 @@ def run_sort_task(task_id: str, req: SortRequest):
             for f in glob.glob(os.path.join(sorted_dir, "*.png")):
                 try:
                     os.remove(f)
-                except:
+                except OSError:
                     pass
         
         # Recover selected pdfs
@@ -47,7 +46,6 @@ def run_sort_task(task_id: str, req: SortRequest):
             raise Exception("Nessun file JSON trovato nella directory di lavoro")
         if len(json_files) > 1:
             raise Exception("Trovati multipli file JSON nella directory di lavoro")
-        datafile_path = json_files[0]
             
         progress_callback = SortProgressCallback(task_id)
         

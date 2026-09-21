@@ -1,11 +1,11 @@
+import glob
+import os
+
+import pandas as pd
 from fastapi import APIRouter, HTTPException
 from schemas.dashboard import DashboardStatus
-import os
-import pandas as pd
 
 router = APIRouter()
-
-import glob
 
 # In local development: we dynamically calculate the "data" folder located
 # two levels above this file (backend/api/dashboard.py -> ../../data)
