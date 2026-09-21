@@ -51,28 +51,20 @@ echo Docker e' ora in esecuzione
 :DockerIsRunning
 
 echo.
-if not exist ".build_done" (
-    echo [2/4] Costruzione dei container Docker ^(Build^)...
-    echo ^(NOTA: La primissima volta questa operazione potrebbe richiedere 
-    echo diversi minuti per scaricare le immagini base e compilare il codice^)
-    
-    :: In questo modo la procedura di build e' ben visibile a schermo passo-passo
-    docker-compose build --no-cache
-    if %errorlevel% neq 0 (
-        echo.
-        echo ==============================================
-        echo ERRORE: La fase di build e' fallita.
-        echo Scorri in alto per leggere il messaggio d'errore
-        echo ed individuare il problema.
-        echo ==============================================
-        pause
-        exit /b %errorlevel%
-    )
-    
-    :: Crea un file nascosto come "segnalibro" per ricordare che la build e' fatta
-    type nul > .build_done
-) else (
-    echo [2/4] Costruzione dei container Docker saltata ^(Gia' effettuata in passato^).
+echo [2/4] Aggiornamento incrementale dei container Docker...
+echo ^(NOTA: La primissima volta questa operazione potrebbe richiedere
+echo diversi minuti per scaricare le immagini base e compilare il codice^)
+
+docker-compose build --no-cache
+if %errorlevel% neq 0 (
+    echo.
+    echo ==============================================
+    echo ERRORE: La fase di build e' fallita.
+    echo Scorri in alto per leggere il messaggio d'errore
+    echo ed individuare il problema.
+    echo ==============================================
+    pause
+    exit /b %errorlevel%
 )
 
 echo.
