@@ -143,7 +143,9 @@ if [[ "$USE_LLM" -eq 1 && -n "$COMMITS" ]]; then
 
 Regole:
 - rispondi solo con un elenco puntato Markdown, senza titoli o premesse;
-- scrivi in italiano, in modo conciso e rivolto a chi usa l'applicazione;
+- scrivi esclusivamente in italiano, in modo conciso e rivolto a chi usa l'applicazione;
+- traduci sempre in italiano i messaggi di commit e non copiarne frasi in inglese;
+- mantieni in inglese solo nomi propri, comandi, percorsi e termini tecnici privi di una traduzione naturale;
 - descrivi gli effetti visibili, non i dettagli implementativi;
 - accorpa i commit che fanno parte dello stesso cambiamento;
 - ometti refactoring interni e modifiche senza effetti visibili.
