@@ -3,7 +3,7 @@
 [![Docker images](https://github.com/iolab-uniud/omrexams-ui/actions/workflows/publish-images.yml/badge.svg)](https://github.com/iolab-uniud/omrexams-ui/actions/workflows/publish-images.yml)
 
 OMR-Exams è un'applicazione web completa progettata per creare, gestire e correggere automaticamente esami a risposta multipla utilizzando la tecnologia OMR (Optical Mark Recognition).
-Nato come evoluzione di un software OMR preesistente, questo progetto integra la logica di correzione all'interno di un'interfaccia web  facile da usare anche per gli utenti senza competenze informatiche, offrendo un metodo di distribuzione completamente automatizzato.
+Nato come evoluzione di un software OMR preesistente, questo progetto integra la logica di correzione all'interno di un'interfaccia web facile da usare anche per gli utenti senza competenze informatiche, offrendo un metodo di distribuzione completamente automatizzato.
 
 ## Funzionalità del progetto
 
@@ -11,21 +11,21 @@ Nato come evoluzione di un software OMR preesistente, questo progetto integra la
 - **Correzione Automatica:** Permette di caricare le scansioni dei fogli compilati e utilizza algoritmi OMR per rilevare automaticamente i segni, calcolare i punteggi e associarli agli studenti.
 - **Strumenti di ausilio:** Presenza di diversi strumenti secondari rispetto al flusso di generazione e correzione principale, che permettono una gestione completa del sistema.
 - **Interfaccia Web:** Il frontend permette agli utenti di gestire l'intero flusso di lavoro direttamente dal browser, senza dover interagire con interfacce a riga di comando.
-- **Distribuzione Isolata:** L'intero sistema è "containerizzato" tramite Docker. Ciò vuol dire che funziona allo stesso modo su qualsiasi sistema operativo senza interferire e senza richiedere l'installazione manuale di  librerie o dipedenze.
+- **Distribuzione Isolata:** L'intero sistema è "containerizzato" tramite Docker. Ciò vuol dire che funziona allo stesso modo su qualsiasi sistema operativo senza interferire e senza richiedere l'installazione manuale di librerie o dipendenze.
 
 ## Come utilizzare l'applicazione
 
-La suite è progettata per essere completamente plug-and-play. L'unico requisito di base è Docker Desktop installato nel PC.
+La suite è progettata per essere completamente plug-and-play. Sono richiesti Git e Docker Desktop (oppure Docker Engine con Docker Compose su Linux).
 
 ### Avvio
 
-Clona questa repository includendo il core OMRExams:
+Clona il repository includendo il core OMRExams, mantenuto come submodule in `backend/omrexams`:
 
 ```sh
 git clone --recurse-submodules https://github.com/iolab-uniud/omrexams-ui.git
 ```
 
-Se hai già clonato il progetto, inizializza il submodule con `git submodule update --init --recursive`. Gli script di avvio eseguono comunque questo controllo automaticamente.
+Se hai già clonato il progetto, inizializza il submodule con `git submodule update --init --recursive`. Gli script di avvio eseguono comunque questo controllo automaticamente e interrompono l'avvio se il core non è disponibile.
 
 1. Apri la cartella principale del progetto.
 2. Avvia lo script corrispondente al tuo sistema operativo:
@@ -35,6 +35,24 @@ Se hai già clonato il progetto, inizializza il submodule con `git submodule upd
 La prima build può richiedere diversi minuti; negli avvii successivi Docker riutilizzerà i layer invariati dalla cache.
 
 4. **Spegnimento dell'app:** Basterà premere un tasto qualsiasi nella finestra del terminale rimasta aperta. Lo script si occuperà di spegnere in modo pulito i container e spegnere il Docker Engine qualora richiesto.
+
+### Dipendenze backend con uv
+
+Il backend usa `backend/pyproject.toml` e `backend/uv.lock` per una risoluzione riproducibile delle dipendenze. Dopo aver modificato il manifest, aggiorna il lockfile dalla radice del repository:
+
+```sh
+uv lock --project backend
+```
+
+Per preparare un ambiente locale, installa prima le dipendenze bloccate e poi il core incluso come submodule, senza risolverne nuovamente le dipendenze:
+
+```sh
+cd backend
+uv sync --locked
+uv pip install --no-deps -e ./omrexams
+```
+
+Il sottocomando `uv pip` usa direttamente uv e mantiene il core separato dal manifest della UI, riducendo i conflitti quando il submodule viene aggiornato dal progetto originale.
 
 ### Avvio dalle immagini Docker pubblicate
 
@@ -75,19 +93,47 @@ Sono disponibili anche gli incrementi `minor` e `major`, oppure puoi indicare di
 
 ## Parti principali e architettura
 
-Il progetto è diviso in tre blocchi logici principali, orchestrati insieme da `docker-compose`:
+Il progetto è diviso in tre blocchi logici principali, orchestrati da `docker-compose.yaml`:
 
-- **Frontend (`/frontend`)**
-   È sviluppato in React e compilato con Vite. Fornisce l'interfaccia grafica utente moderna, interattiva e reattiva.
+- **Frontend (`frontend/`)**
+   È sviluppato in React e compilato con Vite. Il codice applicativo si trova in `frontend/src`, suddiviso in pagine, componenti, hook, client API e utilità.
 
-   Viene messo in produzione e servito tramite un server web leggero (**Nginx**).
+   La build di produzione viene servita da **Nginx**, che inoltra al backend le richieste dirette a `/api`.
 
-- **Backend (`/backend`)**
-   È Sviluppato in Python utilizzando il framework FastAPI. Funge da ponte tra l'interfaccia web e il motore centrale di elaborazione OMR.
-   Gestisce l'elaborazione delle immagini, la generazione dei PDF e l'integrazione con le liste studenti in formato Excel. Utilizza TinyDB come database per salvare in modo leggero e veloce lo stato e i risultati degli esami.
+- **Backend (`backend/`)**
+   È sviluppato in Python con FastAPI e funge da ponte tra l'interfaccia web e il motore di elaborazione OMR. `backend/main.py` configura l'applicazione, mentre gli endpoint, i modelli di richiesta e risposta, i servizi condivisi e la gestione dello stato risiedono rispettivamente in `api/`, `schemas/`, `services/` e `state/`.
 
-- **Cartella dei dati (`/data`)**
-   È collegata in modo trasparente alla cartella locale `/data` tramite il docker-compose. Questo garantisce che tutti i compiti generati, le scansioni caricate, i risultati elaborati e in generale i file salvati rimangano in modo persistente sul computer dell'utente e non vadano persi quando l'applicazione viene spenta.
+   Il motore OMR riutilizzabile è il progetto separato incluso come submodule in `backend/omrexams/` e installato come pacchetto Python durante la build del container. Gestisce l'elaborazione delle immagini, la generazione dei PDF e le conversioni dei dati degli esami.
+
+- **Dati persistenti (`data/`)**
+   La directory locale `data/` è montata nel container backend come `/app/data`. Compiti generati, scansioni, risultati e altri file applicativi restano quindi sul computer dell'utente anche quando i container vengono arrestati o ricreati.
+
+### Struttura del repository
+
+```text
+omrexams-ui/
+├── backend/
+│   ├── api/          # endpoint FastAPI
+│   ├── schemas/      # modelli di validazione e trasferimento dati
+│   ├── services/     # servizi applicativi condivisi
+│   ├── state/        # gestione dello stato applicativo
+│   ├── omrexams/     # core OMRExams (Git submodule)
+│   ├── fonts/        # font inclusi nell'immagine backend
+│   └── main.py       # entry point FastAPI
+├── frontend/
+│   └── src/
+│       ├── api/      # client HTTP
+│       ├── components/
+│       ├── hooks/
+│       ├── pages/
+│       └── utils/
+├── data/             # dati applicativi persistenti
+├── docs/             # documentazione delle funzionalità
+├── scripts/          # strumenti di release e manutenzione
+├── docker-compose.yaml
+├── start.bat
+└── start.sh
+```
 
 ---
-Ulteriore documentazione presente nella cartella `/docs`.
+La documentazione delle singole funzionalità è disponibile nella cartella `docs/`.

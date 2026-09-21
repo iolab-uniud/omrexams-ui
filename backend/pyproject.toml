@@ -1,0 +1,43 @@
+[project]
+name = "omrexams-ui-backend"
+version = "0.1.0"
+description = "FastAPI backend for OMR-Exams UI"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "aiofiles",
+    "click",
+    "click-log",
+    "dateparser",
+    "fastapi",
+    "img2pdf",
+    "inflect",
+    "markdown",
+    "markdown-checklists",
+    "markdownify",
+    "mistletoe==0.9.0",
+    "opencv-contrib-python-headless",
+    "openpyxl",
+    "pandas",
+    "pydantic",
+    "pylatex",
+    "pypdf",
+    "python-multipart",
+    "pyyaml",
+    "pyzbar",
+    "saytex",
+    "scikit-image",
+    "scipy",
+    "setuptools<70",
+    "sse-starlette",
+    "tabulate",
+    "tinydb",
+    "uvicorn[standard]",
+    "wand",
+    "wheel",
+    "xlrd",
+    "xlsxwriter",
+    "zxing-cpp",
+]
+
+[tool.uv]
+package = false
