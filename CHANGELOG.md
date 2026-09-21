@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 - 2026-09-21
+
+- Introdotta l'organizzazione dei file generati (esami, correzioni, scansioni) in cartelle di lavoro separate e indipendenti per ogni sessione.
+- Aggiunta la possibilità di scegliere l'intervallo di domande da cui pescare in fase di generazione dell'esame.
+- Le dimensioni personalizzate delle domande aperte ora si esprimono in em anziché in cm.
+- Aggiunta l'opzione per lasciare uno spazio bianco sotto le domande aperte, in alternativa alle righe tratteggiate.
+- Esteso l'editor di testo (stile Word) anche ai testi delle domande e delle opzioni di risposta.
+- Migliorata la conversione tra formattazione HTML e LaTeX nei testi degli esami, rendendola più affidabile.
+- Risolto un problema che impediva la corretta build dei container Docker in fase di avvio dell'applicazione.
+- Rimossi riferimenti a cartelle dati non più utilizzate a seguito della nuova organizzazione dei file di lavoro.
+
+
 ## 0.3.1 - 2026-09-11
 
 start.sh/start.bat ora eseguono sempre un aggiornamento incrementale dei container Docker invece di saltare la build dopo la prima esecuzione.
